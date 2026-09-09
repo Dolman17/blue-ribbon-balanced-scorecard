@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block title %}Manual KPI Entry | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="report-header">
+  <div>
+    <div class="eyebrow">ADMIN</div>
+    <h1>Manual KPI Entry</h1>
+    <p>Amend imported values or add information that was not available when the monthly workbook was uploaded.</p>
+  </div>
+</div>
+
+<div class="visual-card mb-3">
+  <div class="visual-title"><div><h2>Select reporting record</h2><p>Choose the month and scope you want to maintain.</p></div></div>
+  <form method="get" class="manual-selector-grid">
+    <div class="slicer">
+      <label>Reporting month</label>
+      <input class="form-control" type="month" name="month" value="{{ selected_month.strftime('%Y-%m') }}">
+    </div>
+    <div class="slicer">
+      <label>Scope</label>
+      <select class="form-select" name="scope" id="manualScope">
+        <option value="service" {% if scope == 'service' %}selected{% endif %}>Service</option>
+        <option value="group" {% if scope == 'group' %}selected{% endif %}>Group</option>
+      </select>
+    </div>
+    <div class="slicer" id="manualServiceWrap">
+      <label>Service</label>
+      <select class="form-select" name="service_id">
+        {% for s in services %}<option value="{{ s.id }}" {% if service_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="slicer-action"><button class="btn btn-primary w-100" type="submit"><i class="bi bi-arrow-clockwise me-1"></i>Load</button></div>
+  </form>
+</div>
+
+<div class="alert alert-light border d-flex align-items-start gap-2 py-2">
+  <i class="bi bi-info-circle text-primary mt-1"></i>
+  <div class="small"><strong>How this works:</strong> existing values are pre-filled. Change any value and save to amend it. Blank KPI rows are ignored, so you can add only the late information you have received. Saved rows are marked as <strong>Manual entry</strong> and the RAG is recalculated unless you choose a manual RAG.</div>
+</div>
+
+<form method="post">
+  <input type="hidden" name="month" value="{{ selected_month.strftime('%Y-%m') }}">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  {% if service %}<input type="hidden" name="service_id" value="{{ service.id }}">{% endif %}
+  <div class="visual-card p-0 overflow-hidden">
+    <div class="table-responsive manual-entry-wrap">
+      <table class="table power-table manual-entry-table mb-0 align-middle">
+        <thead><tr><th>Domain</th><th>KPI</th><th>Current source</th><th>Value</th><th>Current RAG</th><th>Manual RAG</th><th>Commentary</th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+          {% set kpi = row.kpi %}{% set result = row.result %}
+          <tr>
+            <td><span class="text-secondary">{{ kpi.domain }}</span></td>
+            <td><div class="table-primary-text">{{ kpi.name }}</div><small class="text-secondary">{{ kpi.unit or '' }}</small></td>
+            <td>{% if result %}<span class="manual-source-pill {% if result.source == 'Manual entry' %}manual{% else %}imported{% endif %}">{{ result.source or 'Imported' }}</span>{% else %}<span class="text-secondary small">Not entered</span>{% endif %}</td>
+            <td><input class="form-control form-control-sm" name="kpi_{{ kpi.id }}_value" value="{{ row.value }}" placeholder="Enter value"></td>
+            <td>{% if result %}<span class="rag rag-{{ result.rag|lower }}">{{ result.rag }}</span>{% else %}<span class="rag rag-unscored">Not entered</span>{% endif %}</td>
+            <td><select class="form-select form-select-sm" name="kpi_{{ kpi.id }}_rag"><option value="">Auto</option><option>Green</option><option>Amber</option><option>Red</option><option>Unscored</option></select></td>
+            <td><input class="form-control form-control-sm" name="kpi_{{ kpi.id }}_commentary" value="{{ result.commentary if result and result.commentary else '' }}" placeholder="Optional commentary"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="manual-save-bar d-flex justify-content-between align-items-center">
+      <div class="small text-secondary">{{ 'Group' if scope == 'group' else service.name if service else 'Service' }} · {{ selected_month.strftime('%B %Y') }}</div>
+      <button class="btn btn-primary" type="submit"><i class="bi bi-check2-circle me-1"></i>Save KPI changes</button>
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const scope = document.getElementById('manualScope');
+  const wrap = document.getElementById('manualServiceWrap');
+  function sync(){ if(wrap) wrap.style.display = scope && scope.value === 'group' ? 'none' : 'block'; }
+  if(scope){ scope.addEventListener('change', sync); sync(); }
+})();
+</script>
+{% endblock %}

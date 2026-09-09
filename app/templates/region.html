@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}{{ region_name }} | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap gap-3 justify-content-between align-items-end mb-4">
+  <div><div class="eyebrow">REGION DETAIL</div><h1 class="h3 mb-1">{{ region_name }}</h1><div class="text-secondary">{% if selected_month %}{{ selected_month.strftime('%B %Y') }}{% endif %}</div></div>
+  <form method="get"><select class="form-select" name="month" onchange="this.form.submit()">{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></form>
+</div>
+<div class="row g-4 mb-4">
+  <div class="col-lg-8"><div class="card card-panel"><div class="card-body"><h2 class="h5">Services</h2><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Service</th><th>Overall</th><th>Score</th><th>Red</th><th>Amber</th><th></th></tr></thead><tbody>
+  {% for row in service_rows %}<tr><td class="fw-semibold">{{ row.service.name }}</td><td><span class="rag rag-{{ row.overall|lower }}">{{ row.overall }}</span></td><td>{% if row.score is not none %}{{ '%.2f'|format(row.score) }}/3{% else %}—{% endif %}</td><td>{{ row.red_count }}</td><td>{{ row.amber_count }}</td><td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.service_detail', service_id=row.service.id, month=selected_month.strftime('%Y-%m')) }}">Open</a></td></tr>{% else %}<tr><td colspan="6" class="text-secondary">No service data.</td></tr>{% endfor %}
+  </tbody></table></div></div></div></div>
+  <div class="col-lg-4"><div class="card card-panel"><div class="card-body"><h2 class="h5">Domain health</h2>{% for domain, score in domain_scores.items() %}<div class="d-flex justify-content-between border-bottom py-2"><span>{{ domain }}</span><strong>{{ score }}/3</strong></div>{% else %}<div class="text-secondary">No scored domains.</div>{% endfor %}</div></div></div>
+</div>
+{% endblock %}

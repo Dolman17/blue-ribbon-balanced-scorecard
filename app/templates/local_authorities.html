@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Local Authorities | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="report-header">
+  <div><div class="eyebrow">GEOGRAPHIC VIEW</div><h1>Local Authorities</h1><p>{% if selected_month %}{{ selected_month.strftime('%B %Y') }}{% else %}No data{% endif %}</p></div>
+  {% if selected_month %}<form method="get"><select class="form-select form-select-sm" name="month" onchange="this.form.submit()">{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></form>{% endif %}
+</div>
+<div class="row g-3">
+{% for row in local_authority_rows %}
+<div class="col-md-6 col-xl-4"><div class="visual-card h-100">
+  <div class="d-flex justify-content-between align-items-start"><div><div class="small text-secondary">LOCAL AUTHORITY</div><h2 class="h5">{{ row.local_authority }}</h2></div><span class="rag rag-{{ row.overall|lower }}">{{ row.overall }}</span></div>
+  <div class="region-score">{% if row.score is not none %}{{ '%.2f'|format(row.score) }}<span>/3</span>{% else %}—{% endif %}</div>
+  <div class="row g-2 text-center mb-3"><div class="col-4"><div class="mini-stat"><strong>{{ row.service_count }}</strong><span>Services</span></div></div><div class="col-4"><div class="mini-stat"><strong class="text-danger">{{ row.red_services }}</strong><span>Red</span></div></div><div class="col-4"><div class="mini-stat"><strong class="text-warning">{{ row.amber_services }}</strong><span>Amber</span></div></div></div>
+  <a class="btn btn-outline-primary w-100" href="{{ url_for('main.local_authority_detail', local_authority_name=row.local_authority, month=selected_month.strftime('%Y-%m')) }}">Open Local Authority</a>
+</div></div>
+{% else %}<div class="col-12"><div class="alert alert-light border">No Local Authority data for this month.</div></div>{% endfor %}
+</div>
+{% endblock %}

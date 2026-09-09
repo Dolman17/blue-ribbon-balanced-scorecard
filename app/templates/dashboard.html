@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block title %}Executive Dashboard | Blue Ribbon BSC{% endblock %}
+{% block head %}<script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script>{% endblock %}
+{% block content %}
+<div class="report-header">
+  <div>
+    <div class="eyebrow">EXECUTIVE REPORT</div>
+    <h1>Balanced Scorecard</h1>
+    <p>{% if selected_month %}Performance position for {{ selected_month.strftime('%B %Y') }}{% else %}No data imported yet{% endif %}</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if selected_month %}<a class="btn btn-light report-btn" href="{{ url_for('main.export_board', month=selected_month.strftime('%Y-%m')) }}"><i class="bi bi-file-earmark-excel me-2"></i>Export Board Excel</a>{% endif %}
+    <a class="btn btn-primary report-btn" href="{{ url_for('main.upload') }}"><i class="bi bi-cloud-arrow-up me-2"></i>Upload data</a>
+  </div>
+</div>
+
+{% if not selected_month %}
+<div class="visual-card empty-state"><i class="bi bi-database-add"></i><h2>Import the sample workbook</h2><p>Upload the sample data to populate the Executive, Local Authority and Regional Manager views.</p></div>
+{% else %}
+<form method="get" class="slicer-panel mb-3" id="execFilters">
+  <div class="slicer-title"><i class="bi bi-funnel-fill"></i> Filters</div>
+  <div class="slicer-grid">
+    <div class="slicer"><label>Reporting month</label><select name="month" class="form-select form-select-sm" onchange="this.form.submit()">{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></div>
+    <div class="slicer"><label>Regional Manager</label><select name="regional_manager" class="form-select form-select-sm" onchange="this.form.elements['registered_manager'].value=''; this.form.elements['service_id'].value=''; this.form.submit()"><option value="">All regional managers</option>{% for manager in options.regional_managers %}<option value="{{ manager }}" {% if filters.regional_manager == manager %}selected{% endif %}>{{ manager }}</option>{% endfor %}</select></div>
+    <div class="slicer"><label>Registered Manager</label><select name="registered_manager" class="form-select form-select-sm" onchange="this.form.elements['service_id'].value=''; this.form.submit()"><option value="">All registered managers</option>{% for manager in options.registered_managers %}<option value="{{ manager }}" {% if filters.registered_manager == manager %}selected{% endif %}>{{ manager }}</option>{% endfor %}</select></div>
+    <div class="slicer"><label>Local Authority</label><select name="local_authority" class="form-select form-select-sm" onchange="this.form.elements['service_id'].value=''; this.form.submit()"><option value="">All local authorities</option>{% for local_authority in options.local_authorities %}<option value="{{ local_authority }}" {% if filters.local_authority == local_authority %}selected{% endif %}>{{ local_authority }}</option>{% endfor %}</select></div>
+    <div class="slicer"><label>Service Type</label><select name="service_type" class="form-select form-select-sm" onchange="this.form.elements['service_id'].value=''; this.form.submit()"><option value="">All service types</option>{% for service_type in options.service_types %}<option value="{{ service_type }}" {% if filters.service_type == service_type %}selected{% endif %}>{{ service_type }}</option>{% endfor %}</select></div>
+    <div class="slicer"><label>Service</label><select name="service_id" class="form-select form-select-sm" onchange="this.form.submit()"><option value="">All services</option>{% for service in options.services %}<option value="{{ service.id }}" {% if filters.service_id == service.id %}selected{% endif %}>{{ service.name }}</option>{% endfor %}</select></div>
+    <div class="slicer"><label>Overall RAG</label><select name="rag" class="form-select form-select-sm" onchange="this.form.submit()"><option value="">All statuses</option>{% for rag in ['Green','Amber','Red','Unscored'] %}<option value="{{ rag }}" {% if filters.rag == rag %}selected{% endif %}>{{ rag }}</option>{% endfor %}</select></div>
+    <div class="slicer slicer-action"><a class="btn btn-sm btn-outline-secondary w-100" href="{{ url_for('main.dashboard', month=selected_month.strftime('%Y-%m')) }}"><i class="bi bi-arrow-counterclockwise me-1"></i>Clear filters</a></div>
+  </div>
+</form>
+
+<div class="kpi-strip mb-3">
+  <div class="power-kpi"><span>Services shown</span><strong>{{ service_rows|length }}</strong><small>Filtered portfolio</small></div>
+  <div class="power-kpi kpi-green"><span>Green indicators</span><strong>{{ counts.get('Green',0) }}</strong><small>On track</small></div>
+  <div class="power-kpi kpi-amber"><span>Amber indicators</span><strong>{{ counts.get('Amber',0) }}</strong><small>Watch</small></div>
+  <div class="power-kpi kpi-red"><span>Red indicators</span><strong>{{ counts.get('Red',0) }}</strong><small>Needs attention</small></div>
+  <div class="power-kpi"><span>Unscored</span><strong>{{ counts.get('Unscored',0) }}</strong><small>Data / manual rating</small></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-xl-8">
+    <div class="visual-card h-100">
+      <div class="visual-title"><div><h2>Service risk overview</h2><p>Lowest weighted score first</p></div><span class="visual-meta">{{ service_rows|length }} services</span></div>
+      <div class="table-responsive power-table-wrap"><table class="table power-table align-middle mb-0">
+        <thead><tr><th>Service</th><th>Regional Manager</th><th>Registered Manager</th><th>Local Authority</th><th>Service Type</th><th>Overall</th><th>Score</th><th>Red</th><th>Amber</th><th></th></tr></thead>
+        <tbody>{% for row in service_rows %}<tr class="service-risk-row" role="link" tabindex="0" data-href="{{ url_for('main.service_detail', service_id=row.service.id, month=selected_month.strftime('%Y-%m')) }}" aria-label="Open {{ row.service.name }} service dashboard">
+          <td><div class="table-primary-text">{{ row.service.name }}</div></td>
+          <td>{{ row.service.regional_manager or 'Unassigned' }}</td>
+          <td>{{ row.service.registered_manager or 'Unassigned' }}</td>
+          <td>{{ row.service.local_authority or 'Unassigned' }}</td>
+          <td>{{ row.service.service_type or 'Not set' }}</td>
+          <td><span class="rag rag-{{ row.overall|lower }}"><span class="rag-dot"></span>{{ row.overall }}</span></td>
+          <td>{% if row.score is not none %}<strong>{{ '%.2f'|format(row.score) }}</strong><span class="text-secondary"> / 3</span>{% else %}—{% endif %}</td>
+          <td><span class="count-pill red-pill">{{ row.red_count }}</span></td><td><span class="count-pill amber-pill">{{ row.amber_count }}</span></td>
+          <td><a class="icon-btn" title="Open service" href="{{ url_for('main.service_detail', service_id=row.service.id, month=selected_month.strftime('%Y-%m')) }}"><i class="bi bi-arrow-right"></i></a></td>
+        </tr>{% else %}<tr><td colspan="10" class="text-center text-secondary py-5">No services match the selected filters.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="visual-card h-100"><div class="visual-title"><div><h2>Indicator distribution</h2><p>Filtered service indicators</p></div></div><div id="ragDonut" class="donut-chart"></div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6"><div class="visual-card h-100"><div class="visual-title"><div><h2>Domain health</h2><p>Weighted average score by domain</p></div></div><div id="domainChart" class="domain-chart"></div></div></div>
+  <div class="col-lg-6"><div class="visual-card h-100"><div class="visual-title"><div><h2>Group measures</h2><p>Group-only KPIs are not affected by service slicers</p></div></div>
+    {% for r in group_results %}<div class="group-kpi-row"><div><strong>{{ r.kpi.name }}</strong><small>{% if r.value_numeric is not none %}{{ r.value_numeric|kpi_value(r.kpi.unit) }}{% else %}{{ r.value_text }}{% endif %}</small></div><span class="rag rag-{{ r.rag|lower }}"><span class="rag-dot"></span>{{ r.rag }}</span></div>{% else %}<div class="text-secondary py-3">No group data imported.</div>{% endfor %}
+  </div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6"><div class="visual-card h-100"><div class="visual-title"><div><h2>Bottom 5 services</h2><p>Priority attention</p></div></div>{% for row in bottom_services %}<div class="ranking-row"><div><strong>{{ loop.index }}. {{ row.service.name }}</strong><small>{{ row.service.regional_manager or 'Unassigned Regional Manager' }} › {{ row.service.registered_manager or 'Unassigned Registered Manager' }} · {{ row.service.local_authority or 'Unassigned Local Authority' }}</small></div><div class="text-end"><span class="rag rag-{{ row.overall|lower }}"><span class="rag-dot"></span>{{ row.overall }}</span><small class="score-small">{{ '%.2f'|format(row.score) }}/3</small></div></div>{% else %}<div class="text-secondary">No scored services.</div>{% endfor %}</div></div>
+  <div class="col-lg-6"><div class="visual-card h-100"><div class="visual-title"><div><h2>Top 5 services</h2><p>Strongest weighted performance</p></div></div>{% for row in top_services %}<div class="ranking-row"><div><strong>{{ loop.index }}. {{ row.service.name }}</strong><small>{{ row.service.regional_manager or 'Unassigned Regional Manager' }} › {{ row.service.registered_manager or 'Unassigned Registered Manager' }} · {{ row.service.local_authority or 'Unassigned Local Authority' }}</small></div><div class="text-end"><span class="rag rag-{{ row.overall|lower }}"><span class="rag-dot"></span>{{ row.overall }}</span><small class="score-small">{{ '%.2f'|format(row.score) }}/3</small></div></div>{% else %}<div class="text-secondary">No scored services.</div>{% endfor %}</div></div>
+</div>
+
+<div class="visual-card"><div class="visual-title"><div><h2>12-month service health trend</h2><p>Average weighted overall score using the current slicers</p></div><span class="visual-meta">Score range 1–3</span></div><div id="executiveTrend" class="trend-chart"></div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if selected_month %}
+<script>
+document.querySelectorAll('.service-risk-row').forEach(row => {
+  const openService = () => { if (row.dataset.href) window.location.href = row.dataset.href; };
+  row.addEventListener('click', event => {
+    if (event.target.closest('a, button, input, select, textarea')) return;
+    openService();
+  });
+  row.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openService();
+    }
+  });
+});
+const plotConfig = {displayModeBar:false,responsive:true};
+const commonFont = {family:'Segoe UI, Arial, sans-serif', color:'#46525c'};
+const ragValues = [{{ counts.get('Green',0) }}, {{ counts.get('Amber',0) }}, {{ counts.get('Red',0) }}, {{ counts.get('Unscored',0) }}];
+Plotly.newPlot('ragDonut',[{type:'pie',hole:.68,labels:['Green','Amber','Red','Unscored'],values:ragValues,marker:{colors:['#2e8b57','#d99500','#c83c3c','#9aa4ad']},textinfo:'percent',hovertemplate:'%{label}: %{value}<extra></extra>'}],{margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',x:.5,xanchor:'center',y:-.05},paper_bgcolor:'rgba(0,0,0,0)',font:commonFont},plotConfig);
+const domains = {{ domain_scores.keys()|list|tojson }};
+const domainScores = {{ domain_scores.values()|list|tojson }};
+Plotly.newPlot('domainChart',[{type:'bar',orientation:'h',y:domains,x:domainScores,marker:{color:domainScores.map(v=>v>=2.5?'#2e8b57':v>=1.75?'#d99500':'#c83c3c')},hovertemplate:'%{y}: %{x:.2f}/3<extra></extra>'}],{margin:{l:115,r:25,t:10,b:35},xaxis:{range:[0,3],dtick:.5,gridcolor:'#edf0f2',zeroline:false},yaxis:{automargin:true},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:commonFont},plotConfig);
+{% if trend %}
+const trendMonths = {{ trend|map(attribute='month')|map('string')|list|tojson }};
+const trendLabels = trendMonths.map(v => new Date(v + 'T00:00:00').toLocaleDateString('en-GB',{month:'short',year:'2-digit'}));
+const trendScores = {{ trend|map(attribute='score')|list|tojson }};
+Plotly.newPlot('executiveTrend',[{x:trendLabels,y:trendScores,mode:'lines+markers',line:{width:3,color:'#1f5b83'},marker:{size:8,color:'#1f5b83'},fill:'tozeroy',fillcolor:'rgba(31,91,131,.07)',hovertemplate:'%{x}: %{y:.2f}/3<extra></extra>'}],{margin:{l:45,r:20,t:10,b:40},yaxis:{range:[1,3],dtick:.5,gridcolor:'#edf0f2'},xaxis:{gridcolor:'#f6f7f8'},showlegend:false,paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:commonFont},plotConfig);
+{% endif %}
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Import | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="eyebrow">DATA INGESTION</div>
+    <h1 class="h3">Monthly workbook upload</h1>
+    <p class="text-secondary">Upload the completed .xlsx template. Existing rows for the same reporting month, service and KPI are updated rather than duplicated.</p>
+    <div class="card card-panel">
+      <div class="card-body p-4">
+        <form method="post" enctype="multipart/form-data">
+          <label class="form-label fw-semibold">Excel workbook</label>
+          <input type="file" name="file" class="form-control mb-3" accept=".xlsx" required>
+          <button class="btn btn-primary w-100">Validate and import</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card card-panel">
+      <div class="card-body">
+        <h2 class="h5">Recent imports</h2>
+        <div class="table-responsive"><table class="table align-middle"><thead><tr><th>When</th><th>File</th><th>Imported</th><th>Rejected</th><th>Status</th></tr></thead><tbody>
+        {% for log in logs %}
+          <tr><td>{{ log.imported_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ log.filename }}</td><td>{{ log.rows_imported }}</td><td>{{ log.rows_rejected }}</td><td>{{ log.status }}</td></tr>
+          {% if log.rows_rejected %}<tr><td></td><td colspan="4"><pre class="small text-danger mb-0">{{ log.message }}</pre></td></tr>{% endif %}
+        {% else %}<tr><td colspan="5" class="text-secondary">No imports yet.</td></tr>{% endfor %}
+        </tbody></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

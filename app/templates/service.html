@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}{{ service.name }} | Blue Ribbon BSC{% endblock %}
+{% block head %}<script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script>{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap gap-3 justify-content-between align-items-end mb-4">
+  <div><div class="eyebrow">SERVICE VIEW</div><h1 class="h3 mb-1">{{ service.name }}</h1><div class="text-secondary">Regional Manager: {{ service.regional_manager or 'Not set' }} › Registered Manager: {{ service.registered_manager or 'Not set' }} · Local Authority: {{ service.local_authority or 'Not set' }} · Service Type: {{ service.service_type or 'Not set' }}</div></div>
+  <div class="d-flex gap-2 align-items-center">
+    <a class="btn btn-outline-primary report-btn" href="{{ url_for('main.manual_entry', scope='service', service_id=service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-pencil-square me-1"></i>Edit month</a>
+    <form method="get"><select class="form-select" name="month" onchange="this.form.submit()">{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></form>
+  </div>
+</div>
+<div class="row g-3 mb-4">
+{% for r in results %}
+  <div class="col-md-6 col-xl-4"><div class="card card-panel rag-card rag-card-{{ r.rag|lower }} h-100"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start mb-2"><div><div class="small text-secondary">{{ r.kpi.domain }}</div><h2 class="h6 mb-0">{{ r.kpi.name }}</h2></div><span class="rag rag-{{ r.rag|lower }}">{{ r.rag }}</span></div>
+    <div class="display-6 fw-semibold my-3">{% if r.value_numeric is not none %}{{ r.value_numeric|kpi_value(r.kpi.unit) }}{% else %}{{ r.value_text }}{% endif %}</div>
+    {% if r.commentary %}<div class="small text-secondary">{{ r.commentary }}</div>{% endif %}
+  </div></div></div>
+{% else %}<div class="col-12"><div class="alert alert-light border">No KPI data for this service/month.</div></div>{% endfor %}
+</div>
+
+{% if trends %}<div class="mb-2"><div class="eyebrow">TRENDING</div><h2 class="h4">12-month KPI trends</h2><p class="text-secondary">Numeric measures only. Each chart retains its own unit so percentage and count KPIs are not mixed.</p></div>
+<div class="row g-4">
+{% for trend in trends %}<div class="col-lg-6"><div class="card card-panel"><div class="card-body"><div class="d-flex justify-content-between"><h3 class="h6">{{ trend.kpi.name }}</h3><span class="small text-secondary">{{ trend.kpi.unit or '' }}</span></div><div id="trend-{{ trend.kpi.id }}" class="small-trend"></div></div></div></div>{% endfor %}
+</div>{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if trends %}<script>
+{% for trend in trends %}
+Plotly.newPlot('trend-{{ trend.kpi.id }}', [{x: {{ trend.points|map(attribute='month')|map('string')|list|tojson }}, y: {{ trend.points|map(attribute='value')|list|tojson }}, mode:'lines+markers', line:{width:2.5}, marker:{size:7}}], {margin:{l:45,r:15,t:10,b:40},showlegend:false,paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'}, {displayModeBar:false,responsive:true});
+{% endfor %}
+</script>{% endif %}
+{% endblock %}

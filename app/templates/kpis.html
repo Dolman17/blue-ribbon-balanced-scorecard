@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}KPI Setup | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="mb-4"><div class="eyebrow">CONFIGURATION</div><h1 class="h3 mb-1">KPI scoring setup</h1><p class="text-secondary mb-0">Thresholds and weights are configurable here. For Target Range KPIs, Target is the ideal value and Green/Amber thresholds are the permitted +/- variance from that target.</p></div>
+<form method="post">
+<div class="card card-panel"><div class="card-body p-0"><div class="table-responsive"><table class="table align-middle mb-0 config-table"><thead><tr><th>KPI</th><th>Domain</th><th>Direction</th><th>Target</th><th>Green threshold / tolerance</th><th>Amber threshold / tolerance</th><th>Weight</th><th>Group only</th><th>Active</th><th>Notes</th></tr></thead><tbody>
+{% for kpi in kpis %}<tr>
+  <td><div class="fw-semibold">{{ kpi.name }}</div><div class="small text-secondary">{{ kpi.code }}</div></td>
+  <td><input class="form-control form-control-sm" name="kpi_{{ kpi.id }}_domain" value="{{ kpi.domain }}"></td>
+  <td><select class="form-select form-select-sm" name="kpi_{{ kpi.id }}_direction">{% for option in ['higher','lower','target_range','categorical','manual'] %}<option value="{{ option }}" {% if kpi.direction == option %}selected{% endif %}>{{ option|replace('_',' ')|title }}</option>{% endfor %}</select></td>
+  <td><input type="number" step="any" class="form-control form-control-sm" name="kpi_{{ kpi.id }}_target_value" value="{{ '' if kpi.target_value is none else kpi.target_value }}"></td>
+  <td><input type="number" step="any" class="form-control form-control-sm" name="kpi_{{ kpi.id }}_green_threshold" value="{{ '' if kpi.green_threshold is none else kpi.green_threshold }}"></td>
+  <td><input type="number" step="any" class="form-control form-control-sm" name="kpi_{{ kpi.id }}_amber_threshold" value="{{ '' if kpi.amber_threshold is none else kpi.amber_threshold }}"></td>
+  <td><input type="number" step="0.1" min="0" class="form-control form-control-sm" name="kpi_{{ kpi.id }}_weight" value="{{ kpi.weight }}"></td>
+  <td class="text-center"><input type="checkbox" class="form-check-input" name="kpi_{{ kpi.id }}_group_only" {% if kpi.group_only %}checked{% endif %}></td>
+  <td class="text-center"><input type="checkbox" class="form-check-input" name="kpi_{{ kpi.id }}_active" {% if kpi.active %}checked{% endif %}></td>
+  <td><textarea class="form-control form-control-sm" rows="2" name="kpi_{{ kpi.id }}_notes">{{ kpi.notes or '' }}</textarea></td>
+</tr>{% endfor %}
+</tbody></table></div></div></div>
+<div class="d-flex flex-wrap gap-3 align-items-center justify-content-between mt-3">
+  <div class="form-check"><input class="form-check-input" type="checkbox" value="yes" id="recalculate" name="recalculate"><label class="form-check-label" for="recalculate">Recalculate all non-manual historical RAGs using these settings</label></div>
+  <button class="btn btn-primary px-4">Save KPI configuration</button>
+</div>
+</form>
+{% endblock %}

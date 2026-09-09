@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Service Master | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="report-header">
+  <div><div class="eyebrow">MASTER DATA</div><h1>Service Master</h1><p>Maintain the management hierarchy and Local Authority assigned to each service.</p></div>
+  <form method="get" class="d-flex gap-2"><input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Search services or managers"><button class="btn btn-light btn-sm px-3">Search</button>{% if q %}<a class="btn btn-outline-light btn-sm" href="{{ url_for('main.service_master') }}">Clear</a>{% endif %}</form>
+</div>
+<div class="alert alert-info border-0 shadow-sm py-2 small"><i class="bi bi-info-circle me-1"></i> Saving a service here makes these details the local source of truth, so later monthly imports will not overwrite your manual hierarchy changes. You can switch a service back to workbook-controlled data at any time.</div>
+<div class="visual-card p-0 overflow-hidden">
+  <div class="table-responsive service-master-wrap">
+    <table class="table power-table service-master-table mb-0 align-middle">
+      <thead><tr><th>Code</th><th>Service</th><th>Regional Manager</th><th>Registered Manager</th><th>Local Authority</th><th>Service Type</th><th>Active</th><th>Source</th><th></th></tr></thead>
+      <tbody>
+      {% for service in services %}
+      <tr>
+        <form method="post">
+          <input type="hidden" name="service_id" value="{{ service.id }}">
+          <td><span class="service-code">{{ service.code }}</span></td>
+          <td><input class="form-control form-control-sm" name="name" value="{{ service.name }}" required></td>
+          <td><input class="form-control form-control-sm" name="regional_manager" value="{{ service.regional_manager or '' }}" list="regional-managers" placeholder="Regional Manager"></td>
+          <td><input class="form-control form-control-sm" name="registered_manager" value="{{ service.registered_manager or '' }}" list="registered-managers" placeholder="Registered Manager"></td>
+          <td><input class="form-control form-control-sm" name="local_authority" value="{{ service.local_authority or '' }}" list="local-authorities" placeholder="Local Authority"></td>
+          <td><select class="form-select form-select-sm" name="service_type"><option value="">Not set</option>{% for item in service_types %}<option value="{{ item }}" {% if service.service_type == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></td>
+          <td class="text-center"><input class="form-check-input" type="checkbox" name="active" {% if service.active %}checked{% endif %}></td>
+          <td>{% if service.manual_master_data %}<span class="master-source manual"><i class="bi bi-pencil-square"></i> Manual</span>{% else %}<span class="master-source import"><i class="bi bi-file-earmark-spreadsheet"></i> Workbook</span>{% endif %}</td>
+          <td class="text-nowrap"><button class="btn btn-primary btn-sm"><i class="bi bi-check2"></i> Save</button></td>
+        </form>
+      </tr>
+      {% if service.manual_master_data %}
+      <tr class="master-subrow"><td></td><td colspan="7"><span class="text-secondary small">Manual hierarchy protected from future imports.</span></td><td><form method="post" action="{{ url_for('main.service_use_import_master', service_id=service.id) }}"><button class="btn btn-link btn-sm p-0 text-decoration-none">Use workbook values</button></form></td></tr>
+      {% endif %}
+      {% else %}
+      <tr><td colspan="9" class="text-center text-secondary py-5">No services found.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<datalist id="regional-managers">{% for item in regional_managers %}<option value="{{ item }}">{% endfor %}</datalist>
+<datalist id="registered-managers">{% for item in registered_managers %}<option value="{{ item }}">{% endfor %}</datalist>
+<datalist id="local-authorities">{% for item in local_authorities %}<option value="{{ item }}">{% endfor %}</datalist>
+{% endblock %}
