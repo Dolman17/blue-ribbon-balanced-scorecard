@@ -135,3 +135,13 @@ Use Admin > Manual Entry to amend imported KPI values or add missing KPI data la
 Authentication is now enabled with Flask-Login. On the first launch after upgrading, if there are no users, browse to the app and you will be sent to `/setup` to create the first Administrator account. No default password is supplied.
 
 Admin users can manage accounts from **Admin > Users**: create, read, update, activate/deactivate, reset passwords, and delete other accounts. Roles available are Admin, Executive, Regional Manager, Registered Manager and Viewer. Scope fields are stored for Regional Manager, Registered Manager, Local Authority and Service so portfolio restrictions can be enforced in a future phase. For now, Admin is the intended live role and admin-only pages are protected.
+
+
+## Screen notes / change list
+
+Every authenticated screen now has a **Notes** button in the top bar. Notes are stored against the current screen path, record the author and optional reporting-month context, and can be marked done/reopened or deleted. This is intended as a lightweight working change list while reviewing the dashboard. The `screen_note` table is created automatically on first startup via `db.create_all()`.
+
+
+## Development notes
+
+Admin users have a **Dev Notes** button in the top bar. These notes are intended only as a personal app-development/change list. They are stored in the browser's `localStorage`, keyed to the current screen path, and are **not** written to the Blue Ribbon scorecard database or attached to KPI/service records. Clearing browser site data or using another browser/device will not carry these notes across.

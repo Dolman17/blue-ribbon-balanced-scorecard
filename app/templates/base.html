@@ -45,6 +45,12 @@
       <div class="d-flex align-items-center gap-3 text-secondary small">
         <i class="bi bi-bar-chart-fill"></i><span>Performance Intelligence</span>
         {% if current_user.is_authenticated %}
+        {% if current_user.is_admin %}
+        <button type="button" class="screen-note-btn" data-bs-toggle="modal" data-bs-target="#devNotesModal" title="Development notes for this screen">
+          <i class="bi bi-tools"></i><span class="d-none d-lg-inline">Dev Notes</span>
+          <span class="screen-note-badge d-none" id="devNotesBadge">0</span>
+        </button>
+        {% endif %}
         <span class="top-user"><i class="bi bi-person-circle"></i> {{ current_user.username }} <span class="user-role">{{ current_user.role }}</span></span>
         <form method="post" action="{{ url_for('main.logout') }}" class="m-0"><button type="submit" class="btn btn-sm btn-outline-secondary logout-btn" title="Sign out"><i class="bi bi-box-arrow-right"></i></button></form>
         {% endif %}
@@ -58,6 +64,33 @@
     </main>
   </section>
 </div>
+{% if current_user.is_authenticated and current_user.is_admin %}
+<div class="modal fade" id="devNotesModal" tabindex="-1" aria-labelledby="devNotesModalLabel" aria-hidden="true" data-page-key="{{ request.path }}">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content screen-notes-modal">
+      <div class="modal-header">
+        <div>
+          <div class="eyebrow">APP DEVELOPMENT</div>
+          <h2 class="modal-title fs-5" id="devNotesModalLabel">Development notes</h2>
+          <div class="small text-secondary">Stored in this browser only for <code>{{ request.path }}</code>. Nothing is written to the scorecard database.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="screen-note-compose mb-4">
+          <label class="form-label fw-semibold" for="devNoteBody">Add a development note</label>
+          <textarea class="form-control" id="devNoteBody" rows="3" maxlength="4000" placeholder="e.g. Make this chart larger, add a filter, change the wording on this card..."></textarea>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="small text-secondary">Use this as your personal build/change list for the current screen.</span>
+            <button class="btn btn-primary btn-sm" type="button" id="devNoteAdd"><i class="bi bi-plus-lg me-1"></i>Save note</button>
+          </div>
+        </div>
+        <div class="screen-note-list" id="devNotesList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (function () {
@@ -85,6 +118,110 @@
       try { localStorage.setItem(storageKey, next ? '1' : '0'); } catch (e) {}
     });
   }
+})();
+
+// Admin-only development notes. Stored locally in the browser, never in the application database.
+(function () {
+  const modal = document.getElementById('devNotesModal');
+  if (!modal) return;
+
+  const pageKey = modal.dataset.pageKey || window.location.pathname;
+  const storageKey = 'br-bsc-dev-notes-v1';
+  const list = document.getElementById('devNotesList');
+  const input = document.getElementById('devNoteBody');
+  const addButton = document.getElementById('devNoteAdd');
+  const badge = document.getElementById('devNotesBadge');
+
+  function loadStore() {
+    try { return JSON.parse(localStorage.getItem(storageKey) || '{}'); }
+    catch (e) { return {}; }
+  }
+
+  function saveStore(store) {
+    try { localStorage.setItem(storageKey, JSON.stringify(store)); } catch (e) {}
+  }
+
+  function notesForPage() {
+    const store = loadStore();
+    return Array.isArray(store[pageKey]) ? store[pageKey] : [];
+  }
+
+  function persist(notes) {
+    const store = loadStore();
+    store[pageKey] = notes;
+    saveStore(store);
+    render();
+  }
+
+  function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+  }
+
+  function formatDate(value) {
+    try { return new Date(value).toLocaleString('en-GB', {dateStyle:'medium', timeStyle:'short'}); }
+    catch (e) { return value || ''; }
+  }
+
+  function render() {
+    const notes = notesForPage();
+    const openCount = notes.filter(n => !n.done).length;
+    if (badge) {
+      badge.textContent = openCount;
+      badge.classList.toggle('d-none', openCount === 0);
+    }
+
+    if (!notes.length) {
+      list.innerHTML = '<div class="screen-note-empty"><i class="bi bi-tools"></i><span>No development notes saved for this screen yet.</span></div>';
+      return;
+    }
+
+    list.innerHTML = notes.map(note => `
+      <div class="screen-note-item ${note.done ? 'is-complete' : ''}" data-note-id="${escapeHtml(note.id)}">
+        <div class="screen-note-main">
+          <div class="screen-note-body">${escapeHtml(note.body)}</div>
+          <div class="screen-note-meta"><span><i class="bi bi-clock"></i> ${escapeHtml(formatDate(note.createdAt))}</span><span><i class="bi bi-browser-chrome"></i> Browser-only</span></div>
+        </div>
+        <div class="screen-note-actions">
+          <button class="btn btn-sm ${note.done ? 'btn-outline-secondary' : 'btn-outline-success'} dev-note-toggle" type="button" title="${note.done ? 'Reopen' : 'Mark done'}"><i class="bi ${note.done ? 'bi-arrow-counterclockwise' : 'bi-check2'}"></i></button>
+          <button class="btn btn-sm btn-outline-danger dev-note-delete" type="button" title="Delete"><i class="bi bi-trash"></i></button>
+        </div>
+      </div>`).join('');
+  }
+
+  addButton.addEventListener('click', function () {
+    const body = (input.value || '').trim();
+    if (!body) { input.focus(); return; }
+    const notes = notesForPage();
+    notes.unshift({id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())), body, done:false, createdAt:new Date().toISOString()});
+    persist(notes);
+    input.value = '';
+    input.focus();
+  });
+
+  input.addEventListener('keydown', function (event) {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') addButton.click();
+  });
+
+  list.addEventListener('click', function (event) {
+    const item = event.target.closest('.screen-note-item');
+    if (!item) return;
+    const notes = notesForPage();
+    const index = notes.findIndex(n => n.id === item.dataset.noteId);
+    if (index < 0) return;
+    if (event.target.closest('.dev-note-toggle')) {
+      notes[index].done = !notes[index].done;
+      persist(notes);
+    } else if (event.target.closest('.dev-note-delete')) {
+      if (confirm('Delete this development note?')) {
+        notes.splice(index, 1);
+        persist(notes);
+      }
+    }
+  });
+
+  render();
 })();
 </script>
 {% block scripts %}{% endblock %}
