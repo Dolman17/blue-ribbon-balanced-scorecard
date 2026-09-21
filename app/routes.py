@@ -1,8 +1,9 @@
 from collections import defaultdict
+import json
 from datetime import date, datetime
 from io import BytesIO
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, url_for
 from sqlalchemy import func, or_
 from flask_login import current_user, login_user, logout_user
 
@@ -40,6 +41,36 @@ bp = Blueprint("main", __name__)
 
 
 USER_ROLES = ["Admin", "Executive", "Regional Manager", "Registered Manager", "Viewer"]
+
+EXEC_DASHBOARD_WIDGETS = [
+    "nps_responses",
+    "service_risk",
+    "indicator_distribution",
+    "domain_health",
+    "group_measures",
+    "bottom_services",
+    "top_services",
+    "service_health_trend",
+]
+
+
+def _dashboard_layout_for_user():
+    """Return a safe, complete widget order for the signed-in user."""
+    saved = []
+    if current_user.is_authenticated and current_user.dashboard_layout:
+        try:
+            parsed = json.loads(current_user.dashboard_layout)
+            if isinstance(parsed, list):
+                saved = [item for item in parsed if item in EXEC_DASHBOARD_WIDGETS]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            saved = []
+
+    # Remove duplicates and append any widgets added in later releases.
+    ordered = []
+    for item in saved + EXEC_DASHBOARD_WIDGETS:
+        if item not in ordered:
+            ordered.append(item)
+    return ordered
 
 
 def _admin_required():
@@ -170,6 +201,7 @@ def dashboard():
             "dashboard.html", selected_month=None, months=[], service_rows=[],
             top_services=[], bottom_services=[], group_results=[], counts={},
             domain_scores={}, trend=[], filters=filters, options=options,
+            dashboard_layout=_dashboard_layout_for_user(),
         )
 
     service_rows = service_rows_for_month(
@@ -223,7 +255,39 @@ def dashboard():
         ),
         filters=filters, options=options,
         nps_responses=nps_responses, exec_nps_summary=exec_nps_summary,
+        dashboard_layout=_dashboard_layout_for_user(),
     )
+
+
+@bp.route("/dashboard/layout", methods=["POST"])
+def save_dashboard_layout():
+    payload = request.get_json(silent=True) or {}
+    layout = payload.get("layout")
+
+    if not isinstance(layout, list):
+        return jsonify({"ok": False, "message": "Invalid dashboard layout."}), 400
+
+    clean = []
+    for item in layout:
+        if item in EXEC_DASHBOARD_WIDGETS and item not in clean:
+            clean.append(item)
+
+    # A partial layout is allowed, but missing widgets are appended so users
+    # never lose access when new cards are introduced.
+    for item in EXEC_DASHBOARD_WIDGETS:
+        if item not in clean:
+            clean.append(item)
+
+    current_user.dashboard_layout = json.dumps(clean)
+    db.session.commit()
+    return jsonify({"ok": True, "layout": clean})
+
+
+@bp.route("/dashboard/layout/reset", methods=["POST"])
+def reset_dashboard_layout():
+    current_user.dashboard_layout = None
+    db.session.commit()
+    return jsonify({"ok": True, "layout": EXEC_DASHBOARD_WIDGETS})
 
 
 @bp.route("/local-authorities")

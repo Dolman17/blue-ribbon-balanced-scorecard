@@ -30,6 +30,13 @@ def _ensure_compatible_schema():
                 connection.execute(text("UPDATE service SET updated_at = created_at WHERE updated_at IS NULL"))
 
     inspector = inspect(db.engine)
+    if "user" in inspector.get_table_names():
+        user_columns = {column["name"] for column in inspector.get_columns("user")}
+        with db.engine.begin() as connection:
+            if "dashboard_layout" not in user_columns:
+                connection.execute(text("ALTER TABLE user ADD COLUMN dashboard_layout TEXT"))
+
+    inspector = inspect(db.engine)
     if "kpi_definition" in inspector.get_table_names():
         kpi_columns = {column["name"] for column in inspector.get_columns("kpi_definition")}
         with db.engine.begin() as connection:

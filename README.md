@@ -194,3 +194,7 @@ NPS can now be maintained at individual-response level for each top-level servic
 - The card follows the Executive service filters.
 - A fixed-height scroll area is used automatically when a month contains many responses.
 - Displays response count and calculated NPS for the currently filtered response population.
+
+## Phase 3.23 - Per-user Executive dashboard customisation
+
+The Executive dashboard now includes a **Customise dashboard** button. Each authenticated user can drag the main dashboard cards into their preferred order. The order is stored against that user account in the database, so it follows the user across browsers/devices. A Reset default option restores the standard Blue Ribbon layout. New dashboard cards introduced in future releases are automatically appended if they are not yet present in a user's saved layout.

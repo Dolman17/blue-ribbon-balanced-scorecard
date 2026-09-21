@@ -168,6 +168,9 @@ class User(UserMixin, db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login_at = db.Column(db.DateTime, nullable=True)
 
+    # Per-user Executive dashboard widget order (JSON array of widget IDs).
+    dashboard_layout = db.Column(db.Text, nullable=True)
+
     service = db.relationship("Service", foreign_keys=[service_id])
 
     @property
