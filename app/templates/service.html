@@ -12,6 +12,20 @@
   </div>
 </div>
 
+<div class="row g-3 mb-4">
+{% for r in results %}
+  <div class="col-md-6 col-xl-4"><div class="card card-panel rag-card rag-card-{{ r.rag|lower }} h-100"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start mb-2"><div><div class="small text-secondary">{{ r.kpi.domain }}</div><h2 class="h6 mb-0">{{ r.kpi.name }}</h2></div><span class="rag rag-{{ r.rag|lower }}">{{ r.rag }}</span></div>
+    <div class="display-6 fw-semibold my-3">{% if r.value_numeric is not none %}{{ r.value_numeric|kpi_value(r.kpi.unit) }}{% else %}{{ r.value_text }}{% endif %}</div>
+    {% if r.kpi.code == 'NPS_SCORE' %}<a class="btn btn-sm btn-outline-primary mb-2" href="{{ url_for('main.service_nps_detail', service_id=service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-chat-square-text me-1"></i>View monthly responses</a>{% endif %}
+    {% if r.source == 'SL aggregate' %}<div class="small text-primary mb-1"><i class="bi bi-diagram-3 me-1"></i>Aggregated from SL services</div>{% endif %}
+    {% if r.source == 'NPS responses' %}<div class="small text-primary mb-1"><i class="bi bi-people me-1"></i>Calculated from individual NPS responses</div>{% endif %}
+    {% if r.commentary %}<div class="small text-secondary">{{ r.commentary }}</div>{% endif %}
+  </div></div></div>
+{% else %}<div class="col-12"><div class="alert alert-light border">No KPI data for this service/month.</div></div>{% endfor %}
+</div>
+
+
 {% if service.service_type == 'Supported Living' and sub_service_rows %}
 <div class="visual-card mb-4 p-0 overflow-hidden">
   <div class="sl-drilldown-header">
@@ -48,18 +62,6 @@
 </div>
 {% endif %}
 
-<div class="row g-3 mb-4">
-{% for r in results %}
-  <div class="col-md-6 col-xl-4"><div class="card card-panel rag-card rag-card-{{ r.rag|lower }} h-100"><div class="card-body">
-    <div class="d-flex justify-content-between align-items-start mb-2"><div><div class="small text-secondary">{{ r.kpi.domain }}</div><h2 class="h6 mb-0">{{ r.kpi.name }}</h2></div><span class="rag rag-{{ r.rag|lower }}">{{ r.rag }}</span></div>
-    <div class="display-6 fw-semibold my-3">{% if r.value_numeric is not none %}{{ r.value_numeric|kpi_value(r.kpi.unit) }}{% else %}{{ r.value_text }}{% endif %}</div>
-    {% if r.kpi.code == 'NPS_SCORE' %}<a class="btn btn-sm btn-outline-primary mb-2" href="{{ url_for('main.service_nps_detail', service_id=service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-chat-square-text me-1"></i>View monthly responses</a>{% endif %}
-    {% if r.source == 'SL aggregate' %}<div class="small text-primary mb-1"><i class="bi bi-diagram-3 me-1"></i>Aggregated from SL services</div>{% endif %}
-    {% if r.source == 'NPS responses' %}<div class="small text-primary mb-1"><i class="bi bi-people me-1"></i>Calculated from individual NPS responses</div>{% endif %}
-    {% if r.commentary %}<div class="small text-secondary">{{ r.commentary }}</div>{% endif %}
-  </div></div></div>
-{% else %}<div class="col-12"><div class="alert alert-light border">No KPI data for this service/month.</div></div>{% endfor %}
-</div>
 
 {% if trends %}<div class="mb-2"><div class="eyebrow">TRENDING</div><h2 class="h4">12-month KPI trends</h2><p class="text-secondary">Numeric measures only. Each chart retains its own unit so percentage and count KPIs are not mixed.</p></div>
 <div class="row g-4">

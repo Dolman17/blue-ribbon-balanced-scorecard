@@ -39,6 +39,59 @@
   <div class="power-kpi"><span>Unscored</span><strong>{{ counts.get('Unscored',0) }}</strong><small>Data / manual rating</small></div>
 </div>
 
+<div class="visual-card mb-3">
+  <div class="visual-title">
+    <div>
+      <h2>Monthly NPS responses</h2>
+      <p>Response-level feedback for the filtered portfolio in {{ selected_month.strftime('%B %Y') }}</p>
+    </div>
+    <div class="text-end">
+      <span class="visual-meta">{{ exec_nps_summary.total }} response{% if exec_nps_summary.total != 1 %}s{% endif %}</span>
+      {% if exec_nps_summary.score is not none %}
+      <div class="nps-card-score">NPS {{ '%.0f'|format(exec_nps_summary.score) }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if nps_responses %}
+  <div class="nps-response-scroll">
+    <table class="table power-table align-middle mb-0 nps-response-table">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Date</th>
+          <th>Score</th>
+          <th>Category</th>
+          <th>Response</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for response in nps_responses %}
+        <tr>
+          <td>
+            <div class="table-primary-text">
+              {% if response.sub_service %}
+                {{ response.sub_service.parent_service.name }}
+                <small class="d-block text-secondary">{{ response.sub_service.name }}</small>
+              {% else %}
+                {{ response.service.name if response.service else 'Unknown service' }}
+              {% endif %}
+            </div>
+          </td>
+          <td class="text-nowrap">{{ response.response_date.strftime('%d %b %Y') if response.response_date else '—' }}</td>
+          <td><span class="nps-score-pill">{{ response.score }}</span></td>
+          <td><span class="nps-category nps-{{ response.category|lower }}">{{ response.category }}</span></td>
+          <td class="nps-comment">{{ response.comment or 'No comment provided' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-secondary py-3">No NPS responses have been entered for the selected month and filters.</div>
+  {% endif %}
+</div>
+
 <div class="row g-3 mb-3">
   <div class="col-xl-8">
     <div class="visual-card h-100">

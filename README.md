@@ -182,3 +182,15 @@ NPS can now be maintained at individual-response level for each top-level servic
 - Calculated response-level NPS is written back to the existing `NPS_SCORE` KPI result, so the Executive, hierarchy, service dashboards and Board export continue to use the same KPI framework.
 - Manual NPS entry remains available as a fallback where no response-level NPS data exists for the month. Once detailed responses exist, they take precedence over manual NPS values.
 - Admin users can add and delete response records. Deleting a response automatically recalculates the affected child/service, parent Supported Living service and Group NPS as applicable.
+
+## Phase 3.21 - Supported Living service view layout
+- Reordered the Supported Living parent service page so the main KPI cards appear before the Supported Living sub-service breakdown.
+- The drill-down table now sits immediately beneath the parent KPI cards, followed by the existing trend charts.
+
+
+## Phase 3.22 – Executive NPS Response Card
+- Adds a monthly NPS response card to the Executive dashboard.
+- Shows service / SL sub-service, response date, score, category and comment.
+- The card follows the Executive service filters.
+- A fixed-height scroll area is used automatically when a month contains many responses.
+- Displays response count and calculated NPS for the currently filtered response population.

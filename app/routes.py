@@ -187,6 +187,28 @@ def dashboard():
     bottom_services = scored[:5]
     top_services = list(reversed(scored[-5:]))
 
+    # Monthly NPS response detail for the Executive dashboard.  The response
+    # population follows the current service filters so the card remains
+    # consistent with the portfolio shown elsewhere on the dashboard.
+    visible_service_ids = {row["service"].id for row in service_rows}
+    monthly_nps_responses = (
+        NPSResponse.query
+        .filter_by(reporting_month=selected_month)
+        .order_by(NPSResponse.response_date.desc(), NPSResponse.id.desc())
+        .all()
+    )
+    nps_responses = [
+        response for response in monthly_nps_responses
+        if (
+            response.service_id in visible_service_ids
+            or (
+                response.sub_service is not None
+                and response.sub_service.parent_service_id in visible_service_ids
+            )
+        )
+    ]
+    exec_nps_summary = nps_summary(nps_responses)
+
     return render_template(
         "dashboard.html", selected_month=selected_month, months=months,
         service_rows=service_rows, top_services=top_services, bottom_services=bottom_services,
@@ -200,6 +222,7 @@ def dashboard():
             filters["registered_manager"] or None, filters["service_id"], filters["rag"] or None, filters["service_type"] or None,
         ),
         filters=filters, options=options,
+        nps_responses=nps_responses, exec_nps_summary=exec_nps_summary,
     )
 
 

@@ -81,3 +81,15 @@
 .nps-promoter { background:#e4f4ea; color:#227447; }
 .nps-passive { background:#fff3d7; color:#8a6500; }
 .nps-detractor { background:#fde7e7; color:#a02c2c; }
+
+/* Executive monthly NPS response card */
+.nps-response-scroll{max-height:360px;overflow-y:auto;overflow-x:auto;border:1px solid #edf0f2;border-radius:4px}
+.nps-response-table{min-width:760px}
+.nps-response-table thead{position:sticky;top:0;z-index:3}
+.nps-card-score{font-size:1rem;font-weight:750;color:var(--br-blue);margin-top:2px}
+.nps-score-pill{display:inline-grid;place-items:center;min-width:30px;height:26px;padding:0 7px;border-radius:4px;background:#edf4f8;color:var(--br-blue);font-weight:750}
+.nps-category{display:inline-flex;align-items:center;border-radius:3px;padding:.22rem .48rem;font-size:.68rem;font-weight:650;white-space:nowrap}
+.nps-promoter{background:#e6f3eb;color:#23734a}
+.nps-passive{background:#fff2d7;color:#936100}
+.nps-detractor{background:#fae5e5;color:#a62f2f}
+.nps-comment{min-width:320px;white-space:normal;line-height:1.35}
