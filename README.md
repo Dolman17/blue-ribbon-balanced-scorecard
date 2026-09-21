@@ -198,3 +198,11 @@ NPS can now be maintained at individual-response level for each top-level servic
 ## Phase 3.23 - Per-user Executive dashboard customisation
 
 The Executive dashboard now includes a **Customise dashboard** button. Each authenticated user can drag the main dashboard cards into their preferred order. The order is stored against that user account in the database, so it follows the user across browsers/devices. A Reset default option restores the standard Blue Ribbon layout. New dashboard cards introduced in future releases are automatically appended if they are not yet present in a user's saved layout.
+
+
+## Phase 3.24 - Compact Service View KPI cards
+- Service View KPI cards are now smaller and denser.
+- Four cards per row on standard wide desktop screens.
+- Five cards per row on very large screens.
+- Reduced padding, value size, labels and button sizing only on the Service View KPI grid.
+- Supported Living drill-down, NPS detail, trends and all scoring/data behaviour are unchanged.
