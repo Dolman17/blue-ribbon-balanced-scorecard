@@ -5,15 +5,54 @@
 <div class="d-flex flex-wrap gap-3 justify-content-between align-items-end mb-4">
   <div><div class="eyebrow">SERVICE VIEW</div><h1 class="h3 mb-1">{{ service.name }}</h1><div class="text-secondary">Regional Manager: {{ service.regional_manager or 'Not set' }} › Registered Manager: {{ service.registered_manager or 'Not set' }} · Local Authority: {{ service.local_authority or 'Not set' }} · Service Type: {{ service.service_type or 'Not set' }}</div></div>
   <div class="d-flex gap-2 align-items-center">
+    {% if service.service_type == 'Supported Living' and current_user.is_admin %}<a class="btn btn-outline-secondary report-btn" href="{{ url_for('main.sl_sub_service_master', service_id=service.id) }}"><i class="bi bi-diagram-3 me-1"></i>Manage SL services</a>{% endif %}
     <a class="btn btn-outline-primary report-btn" href="{{ url_for('main.manual_entry', scope='service', service_id=service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-pencil-square me-1"></i>Edit month</a>
-    <form method="get"><select class="form-select" name="month" onchange="this.form.submit()">{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></form>
+    {% if months %}<form method="get"><select class="form-select" name="month" onchange="this.form.submit()">{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></form>{% endif %}
   </div>
 </div>
+
+{% if service.service_type == 'Supported Living' and sub_service_rows %}
+<div class="visual-card mb-4 p-0 overflow-hidden">
+  <div class="sl-drilldown-header">
+    <div>
+      <div class="eyebrow">SUPPORTED LIVING DRILL-DOWN</div>
+      <h2>Services within {{ service.name }}</h2>
+      <p>Child-level KPI scores are entered manually. The main service KPI rows above the wider hierarchy are automatically aggregated from these services.</p>
+    </div>
+    {% if current_user.is_admin %}<a class="btn btn-primary btn-sm" href="{{ url_for('main.sl_sub_service_master', service_id=service.id) }}"><i class="bi bi-plus-lg me-1"></i>Manage services</a>{% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table power-table mb-0 align-middle">
+      <thead><tr><th>SL Service</th><th>Score</th><th>RAG</th><th>Red KPIs</th><th>Amber KPIs</th><th>KPIs Entered</th><th></th></tr></thead>
+      <tbody>
+      {% for row in sub_service_rows %}
+      <tr class="service-risk-row" tabindex="0" role="link" data-href="{{ url_for('main.sl_sub_service_detail', sub_service_id=row.sub_service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}">
+        <td><div class="table-primary-text">{{ row.sub_service.name }}</div>{% if row.sub_service.code %}<small class="text-secondary">{{ row.sub_service.code }}</small>{% endif %}</td>
+        <td>{% if row.score is not none %}<strong>{{ '%.2f'|format(row.score) }}</strong>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+        <td><span class="rag rag-{{ row.overall|lower }}">{{ row.overall }}</span></td>
+        <td><span class="count-pill red-pill">{{ row.red_count }}</span></td>
+        <td><span class="count-pill amber-pill">{{ row.amber_count }}</span></td>
+        <td>{{ row.entered_count }} / {{ row.expected_count }}</td>
+        <td class="text-end"><a class="icon-btn" href="{{ url_for('main.sl_sub_service_detail', sub_service_id=row.sub_service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}" title="View sub-service"><i class="bi bi-chevron-right"></i></a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif service.service_type == 'Supported Living' %}
+<div class="alert alert-light border d-flex justify-content-between align-items-center mb-4">
+  <div><i class="bi bi-diagram-3 text-primary me-2"></i>No Supported Living sub-services have been added yet.</div>
+  {% if current_user.is_admin %}<a class="btn btn-sm btn-primary" href="{{ url_for('main.sl_sub_service_master', service_id=service.id) }}">Add SL services</a>{% endif %}
+</div>
+{% endif %}
+
 <div class="row g-3 mb-4">
 {% for r in results %}
   <div class="col-md-6 col-xl-4"><div class="card card-panel rag-card rag-card-{{ r.rag|lower }} h-100"><div class="card-body">
     <div class="d-flex justify-content-between align-items-start mb-2"><div><div class="small text-secondary">{{ r.kpi.domain }}</div><h2 class="h6 mb-0">{{ r.kpi.name }}</h2></div><span class="rag rag-{{ r.rag|lower }}">{{ r.rag }}</span></div>
     <div class="display-6 fw-semibold my-3">{% if r.value_numeric is not none %}{{ r.value_numeric|kpi_value(r.kpi.unit) }}{% else %}{{ r.value_text }}{% endif %}</div>
+    {% if r.source == 'SL aggregate' %}<div class="small text-primary mb-1"><i class="bi bi-diagram-3 me-1"></i>Aggregated from SL services</div>{% endif %}
     {% if r.commentary %}<div class="small text-secondary">{{ r.commentary }}</div>{% endif %}
   </div></div></div>
 {% else %}<div class="col-12"><div class="alert alert-light border">No KPI data for this service/month.</div></div>{% endfor %}
@@ -25,6 +64,12 @@
 </div>{% endif %}
 {% endblock %}
 {% block scripts %}
+<script>
+document.querySelectorAll('.service-risk-row[data-href]').forEach(function(row){
+  row.addEventListener('click', function(event){ if(event.target.closest('a,button,input,select,textarea')) return; window.location.href = row.dataset.href; });
+  row.addEventListener('keydown', function(event){ if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href = row.dataset.href; } });
+});
+</script>
 {% if trends %}<script>
 {% for trend in trends %}
 Plotly.newPlot('trend-{{ trend.kpi.id }}', [{x: {{ trend.points|map(attribute='month')|map('string')|list|tojson }}, y: {{ trend.points|map(attribute='value')|list|tojson }}, mode:'lines+markers', line:{width:2.5}, marker:{size:7}}], {margin:{l:45,r:15,t:10,b:40},showlegend:false,paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'}, {displayModeBar:false,responsive:true});

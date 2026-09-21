@@ -3,20 +3,20 @@ from app.models import KPIDefinition, KPIResult
 
 
 DEFAULT_KPIS = [
-    dict(code="SAFEGUARDINGS", name="Safeguardings", domain="Quality", unit="count", direction="lower", green_threshold=0, amber_threshold=2, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
-    dict(code="CQC_OUTCOME", name="CQC Outcomes", domain="Quality", unit="rating", direction="categorical", notes="Outstanding/Good (including Good / Not Rated) = Green; Requires Improvement = Amber; Inadequate = Red; Not Rated only = Unscored."),
-    dict(code="INTERNAL_AUDIT", name="Internal Audit Outcome", domain="Quality", unit="%", direction="higher", green_threshold=90, amber_threshold=80, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
-    dict(code="RM_STATUS", name="Registered Manager Status", domain="Governance", unit="status", direction="categorical", notes="Registered = Green; In Progress = Amber; Vacancy/No RM = Red."),
-    dict(code="COMPLAINTS", name="Complaints", domain="Quality", unit="count", direction="lower", green_threshold=0, amber_threshold=2, notes="Example threshold only. Family complaint count can be included in commentary or as separate KPI later."),
-    dict(code="WHISTLEBLOWING", name="Whistleblowing", domain="Governance", unit="count", direction="lower", green_threshold=0, amber_threshold=1, notes="Consolidate Say So, HR whistleblowing and other inbound whistleblowing."),
-    dict(code="TRAINING_COMPLIANCE", name="Training Compliance", domain="People", unit="%", direction="higher", green_threshold=95, amber_threshold=90),
-    dict(code="NAPPI_COMPLIANCE", name="NAPPI Compliance", domain="People", unit="%", direction="higher", green_threshold=95, amber_threshold=90),
-    dict(code="SICKNESS_RATE", name="Sickness Rate", domain="People", unit="%", direction="lower", green_threshold=4, amber_threshold=6, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
-    dict(code="ATTRITION_RATE", name="Attrition Rate", domain="People", unit="%", direction="lower", green_threshold=26, amber_threshold=32, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
-    dict(code="NPS_SCORE", name="NPS Score", domain="People", unit="score", direction="higher", green_threshold=50, amber_threshold=0, notes="Starter NPS thresholds: Green >= 50; Amber 0 to 49.9; Red < 0. Configurable in KPI Setup."),
-    dict(code="OCCUPANCY", name="Occupancy", domain="Operations", unit="%", direction="higher", green_threshold=90, amber_threshold=85, group_only=True, notes="Group-only KPI per email scope."),
-    dict(code="HOURS_USAGE", name="Hours Usage", domain="Operations", unit="%", direction="target_range", target_value=100, green_threshold=2, amber_threshold=5, notes="Target 100%. Green within +/-2%; Amber within +/-5%; Red outside +/-5%. Configurable in KPI Setup."),
-    dict(code="BUDGET_VARIANCE", name="Budget Over / Underspend", domain="Finance", unit="%", direction="target_range", target_value=0, green_threshold=2, amber_threshold=5, notes="Target 0%. Green within +/-2%; Amber within +/-5%; Red outside +/-5%. Configurable in KPI Setup."),
+    dict(code="SAFEGUARDINGS", name="Safeguardings", domain="Quality", unit="count", direction="lower", aggregation_method="sum", green_threshold=0, amber_threshold=2, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
+    dict(code="CQC_OUTCOME", name="CQC Outcomes", domain="Quality", unit="rating", direction="categorical", aggregation_method="worst_rag", notes="Outstanding/Good (including Good / Not Rated) = Green; Requires Improvement = Amber; Inadequate = Red; Not Rated only = Unscored."),
+    dict(code="INTERNAL_AUDIT", name="Internal Audit Outcome", domain="Quality", unit="%", direction="higher", aggregation_method="average", green_threshold=90, amber_threshold=80, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
+    dict(code="RM_STATUS", name="Registered Manager Status", domain="Governance", unit="status", direction="categorical", aggregation_method="worst_rag", notes="Registered = Green; In Progress = Amber; Vacancy/No RM = Red."),
+    dict(code="COMPLAINTS", name="Complaints", domain="Quality", unit="count", direction="lower", aggregation_method="sum", green_threshold=0, amber_threshold=2, notes="Example threshold only. Family complaint count can be included in commentary or as separate KPI later."),
+    dict(code="WHISTLEBLOWING", name="Whistleblowing", domain="Governance", unit="count", direction="lower", aggregation_method="sum", green_threshold=0, amber_threshold=1, notes="Consolidate Say So, HR whistleblowing and other inbound whistleblowing."),
+    dict(code="TRAINING_COMPLIANCE", name="Training Compliance", domain="People", unit="%", direction="higher", aggregation_method="average", green_threshold=95, amber_threshold=90),
+    dict(code="NAPPI_COMPLIANCE", name="NAPPI Compliance", domain="People", unit="%", direction="higher", aggregation_method="average", green_threshold=95, amber_threshold=90),
+    dict(code="SICKNESS_RATE", name="Sickness Rate", domain="People", unit="%", direction="lower", aggregation_method="average", green_threshold=4, amber_threshold=6, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
+    dict(code="ATTRITION_RATE", name="Attrition Rate", domain="People", unit="%", direction="lower", aggregation_method="average", green_threshold=26, amber_threshold=32, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
+    dict(code="NPS_SCORE", name="NPS Score", domain="People", unit="score", direction="higher", aggregation_method="average", green_threshold=50, amber_threshold=0, notes="Starter NPS thresholds: Green >= 50; Amber 0 to 49.9; Red < 0. Configurable in KPI Setup."),
+    dict(code="OCCUPANCY", name="Occupancy", domain="Operations", unit="%", direction="higher", aggregation_method="none", green_threshold=90, amber_threshold=85, group_only=True, notes="Group-only KPI per email scope."),
+    dict(code="HOURS_USAGE", name="Hours Usage", domain="Operations", unit="%", direction="target_range", aggregation_method="average", target_value=100, green_threshold=2, amber_threshold=5, notes="Target 100%. Green within +/-2%; Amber within +/-5%; Red outside +/-5%. Configurable in KPI Setup."),
+    dict(code="BUDGET_VARIANCE", name="Budget Over / Underspend", domain="Finance", unit="%", direction="target_range", aggregation_method="average", target_value=0, green_threshold=2, amber_threshold=5, notes="Target 0%. Green within +/-2%; Amber within +/-5%; Red outside +/-5%. Configurable in KPI Setup."),
 ]
 
 
@@ -27,6 +27,9 @@ def seed_default_kpis():
         if not existing:
             db.session.add(KPIDefinition(**item))
             continue
+
+        if not existing.aggregation_method:
+            existing.aggregation_method = item.get("aggregation_method", "average")
 
         # Upgrade the two previously-manual KPIs to the agreed starter target-range logic
         # without overwriting later user-configured settings.

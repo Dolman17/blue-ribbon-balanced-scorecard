@@ -20,6 +20,27 @@ class Service(db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class SLSubService(db.Model):
+    """A drill-down location/service that sits beneath a top-level Supported Living service."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    parent_service_id = db.Column(db.Integer, db.ForeignKey("service.id"), nullable=False, index=True)
+    name = db.Column(db.String(150), nullable=False)
+    code = db.Column(db.String(80), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    parent_service = db.relationship(
+        "Service",
+        backref=db.backref("sl_sub_services", lazy=True, cascade="all, delete-orphan"),
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint("parent_service_id", "name", name="uq_sl_sub_service_parent_name"),
+    )
+
+
 class KPIDefinition(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(80), unique=True, nullable=False, index=True)
@@ -33,6 +54,7 @@ class KPIDefinition(db.Model):
     weight = db.Column(db.Float, nullable=False, default=1.0)
     group_only = db.Column(db.Boolean, nullable=False, default=False)
     active = db.Column(db.Boolean, nullable=False, default=True)
+    aggregation_method = db.Column(db.String(30), nullable=False, default="average")
     notes = db.Column(db.Text, nullable=True)
 
 
@@ -56,6 +78,29 @@ class KPIResult(db.Model):
         db.UniqueConstraint(
             "reporting_month", "scope", "service_id", "kpi_id",
             name="uq_month_scope_service_kpi",
+        ),
+    )
+
+
+class SLSubServiceKPIResult(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    reporting_month = db.Column(db.Date, nullable=False, index=True)
+    sub_service_id = db.Column(db.Integer, db.ForeignKey("sl_sub_service.id"), nullable=False, index=True)
+    kpi_id = db.Column(db.Integer, db.ForeignKey("kpi_definition.id"), nullable=False, index=True)
+    value_numeric = db.Column(db.Float, nullable=True)
+    value_text = db.Column(db.String(255), nullable=True)
+    rag = db.Column(db.String(20), nullable=False, default="Unscored")
+    commentary = db.Column(db.Text, nullable=True)
+    source = db.Column(db.String(100), nullable=False, default="Manual entry")
+    imported_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    sub_service = db.relationship("SLSubService", backref="kpi_results")
+    kpi = db.relationship("KPIDefinition", backref="sl_sub_service_results")
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "reporting_month", "sub_service_id", "kpi_id",
+            name="uq_month_sl_sub_service_kpi",
         ),
     )
 

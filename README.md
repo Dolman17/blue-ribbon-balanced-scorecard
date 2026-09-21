@@ -145,3 +145,26 @@ Every authenticated screen now has a **Notes** button in the top bar. Notes are 
 ## Development notes
 
 Admin users have a **Dev Notes** button in the top bar. These notes are intended only as a personal app-development/change list. They are stored in the browser's `localStorage`, keyed to the current screen path, and are **not** written to the Blue Ribbon scorecard database or attached to KPI/service records. Clearing browser site data or using another browser/device will not carry these notes across.
+
+## Phase 3.19 - Supported Living drill-down
+
+Supported Living services can now contain manually maintained sub-services/locations without increasing top-level service counts.
+
+### Workflow
+1. Open **Service Master** and use **Manage** against a Supported Living service, or open the service and select **Manage SL services**.
+2. Add the individual services/locations beneath that Supported Living service.
+3. Open a child service and choose **Edit month** to enter its KPI values manually.
+4. Saving child KPI values automatically recalculates the parent Supported Living KPI results for the same reporting month.
+5. The parent then continues to feed the existing Registered Manager, Regional Manager, Local Authority and Executive views.
+
+### KPI roll-up methods
+KPI Setup now includes an **SL roll-up** field:
+- **Average** - average numeric child values, then score the aggregated value.
+- **Sum** - sum numeric child values, then score the aggregated value.
+- **Worst RAG** - use the most adverse child RAG/value.
+- **Do not aggregate** - leave that KPI outside the child roll-up.
+
+Starter defaults are Sum for count KPIs, Worst RAG for categorical/status KPIs, and Average for most percentages/scores. Group-only KPIs are excluded from child entry.
+
+### Database compatibility
+The app creates the new `sl_sub_service` and `sl_sub_service_kpi_result` tables automatically on startup. Existing databases are upgraded in place with the new `aggregation_method` field on `kpi_definition`. Existing top-level KPI history is retained.

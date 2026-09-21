@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Manual KPI Entry | {{ sub_service.name }} | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="report-header">
+  <div>
+    <div class="eyebrow">SUPPORTED LIVING · MANUAL ENTRY</div>
+    <h1>{{ sub_service.name }}</h1>
+    <p>{{ service.name }} · Enter the sub-service KPI values that will aggregate to the main Supported Living score.</p>
+  </div>
+  <a class="btn btn-light btn-sm" href="{{ url_for('main.sl_sub_service_detail', sub_service_id=sub_service.id, month=selected_month.strftime('%Y-%m')) }}"><i class="bi bi-arrow-left me-1"></i>Back to sub-service</a>
+</div>
+
+<div class="visual-card mb-3">
+  <form method="get" class="manual-selector-grid sl-manual-selector-grid">
+    <div class="slicer"><label>Reporting month</label><input class="form-control" type="month" name="month" value="{{ selected_month.strftime('%Y-%m') }}"></div>
+    <div class="slicer"><label>Parent SL service</label><input class="form-control" value="{{ service.name }}" disabled></div>
+    <div class="slicer"><label>Sub-service</label><input class="form-control" value="{{ sub_service.name }}" disabled></div>
+    <div class="slicer-action"><button class="btn btn-primary w-100" type="submit"><i class="bi bi-arrow-clockwise me-1"></i>Load</button></div>
+  </form>
+</div>
+
+<div class="alert alert-info border-0 shadow-sm py-2 small"><i class="bi bi-info-circle me-1"></i> Save the child-level values here. The parent <strong>{{ service.name }}</strong> KPI rows will then be recalculated automatically. The roll-up method is shown against each KPI.</div>
+
+<form method="post">
+  <input type="hidden" name="month" value="{{ selected_month.strftime('%Y-%m') }}">
+  <div class="visual-card p-0 overflow-hidden">
+    <div class="table-responsive manual-entry-wrap">
+      <table class="table power-table manual-entry-table mb-0 align-middle">
+        <thead><tr><th>Domain</th><th>KPI</th><th>Roll-up</th><th>Value</th><th>Current RAG</th><th>Manual RAG</th><th>Commentary</th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+          {% set kpi = row.kpi %}{% set result = row.result %}
+          <tr>
+            <td><span class="text-secondary">{{ kpi.domain }}</span></td>
+            <td><div class="table-primary-text">{{ kpi.name }}</div><small class="text-secondary">{{ kpi.unit or '' }}</small></td>
+            <td><span class="aggregation-pill">{{ (kpi.aggregation_method or 'average')|replace('_',' ')|title }}</span></td>
+            <td><input class="form-control form-control-sm" name="kpi_{{ kpi.id }}_value" value="{{ row.value }}" placeholder="Enter value"></td>
+            <td>{% if result %}<span class="rag rag-{{ result.rag|lower }}">{{ result.rag }}</span>{% else %}<span class="rag rag-unscored">Not entered</span>{% endif %}</td>
+            <td><select class="form-select form-select-sm" name="kpi_{{ kpi.id }}_rag"><option value="">Auto</option><option>Green</option><option>Amber</option><option>Red</option><option>Unscored</option></select></td>
+            <td><input class="form-control form-control-sm" name="kpi_{{ kpi.id }}_commentary" value="{{ result.commentary if result and result.commentary else '' }}" placeholder="Optional commentary"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="manual-save-bar d-flex justify-content-between align-items-center">
+      <div class="small text-secondary">{{ service.name }} › {{ sub_service.name }} · {{ selected_month.strftime('%B %Y') }}</div>
+      <button class="btn btn-primary" type="submit"><i class="bi bi-check2-circle me-1"></i>Save and recalculate parent</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

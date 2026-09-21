@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}SL Services | {{ service.name }} | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="report-header">
+  <div>
+    <div class="eyebrow">SUPPORTED LIVING STRUCTURE</div>
+    <h1>{{ service.name }}</h1>
+    <p>Add the individual services/locations that sit beneath this Supported Living service. These do not count as extra top-level services.</p>
+  </div>
+  <a class="btn btn-light btn-sm" href="{{ url_for('main.service_detail', service_id=service.id) }}"><i class="bi bi-arrow-left me-1"></i>Back to service</a>
+</div>
+
+<div class="visual-card mb-3">
+  <div class="visual-title"><div><h2>Add Supported Living sub-service</h2><p>Scores are entered manually at this level and roll up to {{ service.name }}.</p></div></div>
+  <form method="post" class="row g-2 align-items-end">
+    <div class="col-md-5"><label class="form-label small fw-semibold">Sub-service name</label><input class="form-control" name="name" required placeholder="e.g. 12 Example Street"></div>
+    <div class="col-md-3"><label class="form-label small fw-semibold">Reference / code</label><input class="form-control" name="code" placeholder="Optional"></div>
+    <div class="col-md-2"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="active" id="newChildActive" checked><label class="form-check-label" for="newChildActive">Active</label></div></div>
+    <div class="col-md-2"><button class="btn btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Add</button></div>
+  </form>
+</div>
+
+<div class="visual-card p-0 overflow-hidden">
+  <div class="table-responsive">
+    <table class="table power-table mb-0 align-middle">
+      <thead><tr><th>Sub-service</th><th>Reference</th><th>Active</th><th>Manual KPI Entry</th><th></th></tr></thead>
+      <tbody>
+      {% for child in children %}
+      <tr>
+        <form method="post">
+          <input type="hidden" name="sub_service_id" value="{{ child.id }}">
+          <td><input class="form-control form-control-sm" name="name" value="{{ child.name }}" required></td>
+          <td><input class="form-control form-control-sm" name="code" value="{{ child.code or '' }}"></td>
+          <td><input class="form-check-input" type="checkbox" name="active" {% if child.active %}checked{% endif %}></td>
+          <td><a class="btn btn-outline-primary btn-sm" href="{{ url_for('main.sl_sub_service_manual_entry', sub_service_id=child.id) }}"><i class="bi bi-pencil-square me-1"></i>Enter scores</a></td>
+          <td class="text-end"><button class="btn btn-primary btn-sm"><i class="bi bi-check2 me-1"></i>Save</button></td>
+        </form>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-center text-secondary py-5">No sub-services added yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

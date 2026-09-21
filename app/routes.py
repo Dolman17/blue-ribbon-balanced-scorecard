@@ -7,7 +7,7 @@ from sqlalchemy import func, or_
 from flask_login import current_user, login_user, logout_user
 
 from .extensions import db
-from .models import ImportLog, KPIDefinition, KPIResult, Service, User
+from .models import ImportLog, KPIDefinition, KPIResult, Service, SLSubService, SLSubServiceKPIResult, User
 from .services.analytics import (
     available_months,
     domain_scores_for_month,
@@ -24,6 +24,13 @@ from .services.analytics import (
 from .services.exporter import build_board_pack
 from .services.importer import import_workbook
 from .services.scoring import calculate_rag
+from .services.sl_aggregation import (
+    AGGREGATION_METHODS,
+    aggregate_all_parent_months,
+    aggregate_parent_service,
+    sub_service_numeric_trends,
+    sub_service_rows_for_month,
+)
 
 bp = Blueprint("main", __name__)
 
@@ -387,6 +394,10 @@ def service_detail(service_id):
         .order_by(KPIResult.reporting_month.desc())
         .all()
     ]
+    sub_service_rows = []
+    if service.service_type == "Supported Living" and selected_month:
+        sub_service_rows = sub_service_rows_for_month(service.id, selected_month)
+
     return render_template(
         "service.html",
         service=service,
@@ -394,6 +405,204 @@ def service_detail(service_id):
         selected_month=selected_month,
         months=months,
         trends=service_numeric_trends(service.id, 12),
+        sub_service_rows=sub_service_rows,
+    )
+
+
+@bp.route("/service/<int:service_id>/sl-services", methods=["GET", "POST"])
+def sl_sub_service_master(service_id):
+    _admin_required()
+    service = Service.query.get_or_404(service_id)
+    if service.service_type != "Supported Living":
+        flash("SL drill-down services can only be added beneath a Supported Living service.", "warning")
+        return redirect(url_for("main.service_detail", service_id=service.id))
+
+    if request.method == "POST":
+        sub_service_id = request.form.get("sub_service_id", type=int)
+        name = (request.form.get("name") or "").strip()
+        code = (request.form.get("code") or "").strip() or None
+        active = request.form.get("active") == "on"
+
+        if not name:
+            flash("Enter a name for the Supported Living sub-service.", "danger")
+            return redirect(url_for("main.sl_sub_service_master", service_id=service.id))
+
+        try:
+            if sub_service_id:
+                child = SLSubService.query.filter_by(id=sub_service_id, parent_service_id=service.id).first_or_404()
+                child.name = name
+                child.code = code
+                child.active = active
+                message = f"{child.name} updated."
+            else:
+                duplicate = SLSubService.query.filter(
+                    SLSubService.parent_service_id == service.id,
+                    func.lower(SLSubService.name) == name.lower(),
+                ).first()
+                if duplicate:
+                    raise ValueError("A sub-service with that name already exists beneath this Supported Living service.")
+                child = SLSubService(parent_service_id=service.id, name=name, code=code, active=active)
+                db.session.add(child)
+                message = f"{name} added beneath {service.name}."
+
+            db.session.commit()
+            aggregate_all_parent_months(service.id)
+            flash(message, "success")
+        except Exception as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+
+        return redirect(url_for("main.sl_sub_service_master", service_id=service.id))
+
+    children = SLSubService.query.filter_by(parent_service_id=service.id).order_by(SLSubService.active.desc(), SLSubService.name).all()
+    return render_template("sl_sub_services.html", service=service, children=children)
+
+
+@bp.route("/sl-service/<int:sub_service_id>")
+def sl_sub_service_detail(sub_service_id):
+    child = SLSubService.query.get_or_404(sub_service_id)
+    service = child.parent_service
+    month_arg = request.args.get("month")
+    selected_month = date.fromisoformat(month_arg + "-01") if month_arg else latest_month()
+
+    results = []
+    if selected_month:
+        results = (
+            SLSubServiceKPIResult.query
+            .filter_by(reporting_month=selected_month, sub_service_id=child.id)
+            .join(KPIDefinition)
+            .order_by(KPIDefinition.domain, KPIDefinition.name)
+            .all()
+        )
+
+    months = [
+        row[0]
+        for row in SLSubServiceKPIResult.query.with_entities(SLSubServiceKPIResult.reporting_month)
+        .filter_by(sub_service_id=child.id)
+        .distinct()
+        .order_by(SLSubServiceKPIResult.reporting_month.desc())
+        .all()
+    ]
+    return render_template(
+        "sl_sub_service.html",
+        service=service,
+        sub_service=child,
+        results=results,
+        selected_month=selected_month,
+        months=months,
+        trends=sub_service_numeric_trends(child.id, 12),
+    )
+
+
+@bp.route("/sl-service/<int:sub_service_id>/manual-entry", methods=["GET", "POST"])
+def sl_sub_service_manual_entry(sub_service_id):
+    _admin_required()
+    child = SLSubService.query.get_or_404(sub_service_id)
+    service = child.parent_service
+
+    try:
+        selected_month = _parse_manual_month(request.values.get("month"))
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        selected_month = latest_month() or date.today().replace(day=1)
+
+    kpis = [
+        k for k in KPIDefinition.query.filter_by(active=True).order_by(KPIDefinition.domain, KPIDefinition.name).all()
+        if not k.group_only
+    ]
+
+    if request.method == "POST":
+        changed = 0
+        created = 0
+        errors = []
+        for kpi in kpis:
+            prefix = f"kpi_{kpi.id}_"
+            raw_value = (request.form.get(prefix + "value") or "").strip()
+            commentary = (request.form.get(prefix + "commentary") or "").strip() or None
+            manual_rag = (request.form.get(prefix + "rag") or "").strip() or None
+
+            if not raw_value:
+                continue
+
+            try:
+                numeric_value = None
+                text_value = None
+                if kpi.direction in {"higher", "lower", "manual", "target_range"}:
+                    try:
+                        numeric_value = float(raw_value)
+                    except (TypeError, ValueError):
+                        text_value = raw_value
+                else:
+                    text_value = raw_value
+
+                rag = calculate_rag(kpi, numeric_value, text_value, manual_rag)
+                result = SLSubServiceKPIResult.query.filter_by(
+                    reporting_month=selected_month,
+                    sub_service_id=child.id,
+                    kpi_id=kpi.id,
+                ).first()
+                if not result:
+                    result = SLSubServiceKPIResult(
+                        reporting_month=selected_month,
+                        sub_service_id=child.id,
+                        kpi_id=kpi.id,
+                    )
+                    db.session.add(result)
+                    created += 1
+
+                result.value_numeric = numeric_value
+                result.value_text = text_value
+                result.rag = rag
+                result.commentary = commentary
+                result.source = "Manual entry"
+                result.imported_at = datetime.utcnow()
+                changed += 1
+            except Exception as exc:
+                errors.append(f"{kpi.name}: {exc}")
+
+        if errors:
+            db.session.rollback()
+            flash("Nothing was saved because of errors: " + " | ".join(errors[:5]), "danger")
+        else:
+            db.session.commit()
+            aggregate_parent_service(service.id, selected_month)
+            updated = changed - created
+            flash(
+                f"{child.name} / {selected_month.strftime('%B %Y')}: saved {changed} KPI record(s) "
+                f"({created} new, {updated} amended) and recalculated {service.name}.",
+                "success",
+            )
+        return redirect(url_for(
+            "main.sl_sub_service_manual_entry",
+            sub_service_id=child.id,
+            month=selected_month.strftime("%Y-%m"),
+        ))
+
+    existing_results = {
+        r.kpi_id: r
+        for r in SLSubServiceKPIResult.query.filter_by(
+            reporting_month=selected_month,
+            sub_service_id=child.id,
+        ).all()
+    }
+    rows = []
+    for kpi in kpis:
+        result = existing_results.get(kpi.id)
+        if result:
+            if result.value_numeric is not None:
+                value = str(int(result.value_numeric)) if kpi.unit == "count" and float(result.value_numeric).is_integer() else str(result.value_numeric)
+            else:
+                value = result.value_text or ""
+        else:
+            value = ""
+        rows.append({"kpi": kpi, "result": result, "value": value})
+
+    return render_template(
+        "sl_sub_service_manual_entry.html",
+        service=service,
+        sub_service=child,
+        selected_month=selected_month,
+        rows=rows,
     )
 
 
@@ -549,6 +758,10 @@ def kpi_config():
                 kpi.green_threshold = _optional_float(request.form.get(prefix + "green_threshold"))
                 kpi.amber_threshold = _optional_float(request.form.get(prefix + "amber_threshold"))
                 kpi.weight = _optional_float(request.form.get(prefix + "weight"), default=1.0)
+                aggregation_method = (request.form.get(prefix + "aggregation_method") or kpi.aggregation_method or "average").strip().lower()
+                if aggregation_method not in AGGREGATION_METHODS:
+                    aggregation_method = "average"
+                kpi.aggregation_method = aggregation_method
                 kpi.active = request.form.get(prefix + "active") == "on"
                 kpi.group_only = request.form.get(prefix + "group_only") == "on"
                 kpi.notes = (request.form.get(prefix + "notes") or "").strip() or None
@@ -559,12 +772,18 @@ def kpi_config():
                 flash(f"KPI configuration saved and {recalc_count} historical result(s) recalculated.", "success")
             else:
                 flash("KPI configuration saved. Existing historical RAGs were left unchanged.", "success")
+
+            # Rebuild Supported Living parent roll-ups if a roll-up method changed.
+            sl_parents = Service.query.filter_by(service_type="Supported Living", active=True).all()
+            for parent in sl_parents:
+                if parent.sl_sub_services:
+                    aggregate_all_parent_months(parent.id)
             return redirect(url_for("main.kpi_config"))
         except Exception as exc:
             db.session.rollback()
             flash(str(exc), "danger")
 
-    return render_template("kpis.html", kpis=kpis)
+    return render_template("kpis.html", kpis=kpis, aggregation_methods=AGGREGATION_METHODS)
 
 
 def _optional_float(value, default=None):
