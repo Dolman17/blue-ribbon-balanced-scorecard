@@ -53,6 +53,10 @@ def aggregate_parent_service(parent_service_id, reporting_month):
     changed = 0
 
     for kpi in kpis:
+        # NPS must be calculated from underlying individual responses, never by
+        # averaging child NPS percentages. It is recalculated separately below.
+        if kpi.code == "NPS_SCORE":
+            continue
         results = grouped.get(kpi.id, [])
         method = (kpi.aggregation_method or "average").strip().lower()
         if method == "none":
@@ -130,6 +134,12 @@ def aggregate_parent_service(parent_service_id, reporting_month):
         parent_result.imported_at = datetime.utcnow()
         changed += 1
 
+    db.session.commit()
+
+    # Keep parent NPS mathematically correct by using all underlying responses.
+    from app.services.nps import recalculate_service_nps, recalculate_group_nps
+    recalculate_service_nps(parent_service_id, reporting_month)
+    recalculate_group_nps(reporting_month)
     db.session.commit()
     return changed
 

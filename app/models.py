@@ -105,6 +105,40 @@ class SLSubServiceKPIResult(db.Model):
     )
 
 
+class NPSResponse(db.Model):
+    """Individual monthly NPS response attached to a top-level or SL sub-service."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    reporting_month = db.Column(db.Date, nullable=False, index=True)
+    response_date = db.Column(db.Date, nullable=True)
+    service_id = db.Column(db.Integer, db.ForeignKey("service.id"), nullable=True, index=True)
+    sub_service_id = db.Column(db.Integer, db.ForeignKey("sl_sub_service.id"), nullable=True, index=True)
+    score = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text, nullable=True)
+    source = db.Column(db.String(150), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    service = db.relationship("Service", backref="nps_responses")
+    sub_service = db.relationship("SLSubService", backref="nps_responses")
+
+    @property
+    def category(self):
+        if self.score >= 9:
+            return "Promoter"
+        if self.score >= 7:
+            return "Passive"
+        return "Detractor"
+
+    __table_args__ = (
+        db.CheckConstraint("score >= 0 AND score <= 10", name="ck_nps_response_score_0_10"),
+        db.CheckConstraint(
+            "(service_id IS NOT NULL AND sub_service_id IS NULL) OR "
+            "(service_id IS NULL AND sub_service_id IS NOT NULL)",
+            name="ck_nps_response_single_scope",
+        ),
+    )
+
+
 class ImportLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)

@@ -9,6 +9,7 @@
     <div class="text-secondary">Parent service: <a href="{{ url_for('main.service_detail', service_id=service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}">{{ service.name }}</a> · Regional Manager: {{ service.regional_manager or 'Not set' }} · Registered Manager: {{ service.registered_manager or 'Not set' }}</div>
   </div>
   <div class="d-flex gap-2 align-items-center">
+    <a class="btn btn-outline-secondary report-btn" href="{{ url_for('main.sl_sub_service_nps_detail', sub_service_id=sub_service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-chat-square-heart me-1"></i>NPS detail</a>
     {% if current_user.is_admin %}<a class="btn btn-outline-primary report-btn" href="{{ url_for('main.sl_sub_service_manual_entry', sub_service_id=sub_service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-pencil-square me-1"></i>Edit month</a>{% endif %}
     {% if months %}<form method="get"><select class="form-select" name="month" onchange="this.form.submit()">{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></form>{% endif %}
   </div>
@@ -21,6 +22,8 @@
   <div class="col-md-6 col-xl-4"><div class="card card-panel rag-card rag-card-{{ r.rag|lower }} h-100"><div class="card-body">
     <div class="d-flex justify-content-between align-items-start mb-2"><div><div class="small text-secondary">{{ r.kpi.domain }}</div><h2 class="h6 mb-0">{{ r.kpi.name }}</h2></div><span class="rag rag-{{ r.rag|lower }}">{{ r.rag }}</span></div>
     <div class="display-6 fw-semibold my-3">{% if r.value_numeric is not none %}{{ r.value_numeric|kpi_value(r.kpi.unit) }}{% else %}{{ r.value_text }}{% endif %}</div>
+    {% if r.kpi.code == 'NPS_SCORE' %}<a class="btn btn-sm btn-outline-primary mb-2" href="{{ url_for('main.sl_sub_service_nps_detail', sub_service_id=sub_service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-chat-square-text me-1"></i>View monthly responses</a>{% endif %}
+    {% if r.source == 'NPS responses' %}<div class="small text-primary mb-1"><i class="bi bi-people me-1"></i>Calculated from individual NPS responses</div>{% endif %}
     {% if r.commentary %}<div class="small text-secondary">{{ r.commentary }}</div>{% endif %}
   </div></div></div>
 {% else %}<div class="col-12"><div class="alert alert-light border">No KPI data has been entered for this sub-service/month.</div></div>{% endfor %}

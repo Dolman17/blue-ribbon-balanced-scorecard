@@ -168,3 +168,17 @@ Starter defaults are Sum for count KPIs, Worst RAG for categorical/status KPIs, 
 
 ### Database compatibility
 The app creates the new `sl_sub_service` and `sl_sub_service_kpi_result` tables automatically on startup. Existing databases are upgraded in place with the new `aggregation_method` field on `kpi_definition`. Existing top-level KPI history is retained.
+
+## Phase 3.20 - Monthly NPS response drill-down
+
+NPS can now be maintained at individual-response level for each top-level service and each Supported Living sub-service.
+
+- Open a service or SL sub-service and choose **NPS detail**.
+- Select the reporting month and enter one or more 0-10 responses, with optional response date, comment/reason and source.
+- Scores are categorised automatically: 9-10 Promoter, 7-8 Passive, 0-6 Detractor.
+- The NPS score is calculated from the underlying response population: `% Promoters - % Detractors`.
+- A Supported Living parent's NPS is calculated from all underlying responses across its active child services plus any responses entered directly against the parent. Child NPS percentages are never averaged.
+- Group NPS is calculated from all individual responses across the organisation, so each response is counted once.
+- Calculated response-level NPS is written back to the existing `NPS_SCORE` KPI result, so the Executive, hierarchy, service dashboards and Board export continue to use the same KPI framework.
+- Manual NPS entry remains available as a fallback where no response-level NPS data exists for the month. Once detailed responses exist, they take precedence over manual NPS values.
+- Admin users can add and delete response records. Deleting a response automatically recalculates the affected child/service, parent Supported Living service and Group NPS as applicable.

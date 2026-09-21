@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}NPS Detail | {{ sub_service.name if sub_service else service.name }} | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap gap-3 justify-content-between align-items-end mb-4">
+  <div>
+    <div class="eyebrow">NPS MONTHLY DETAIL</div>
+    <h1 class="h3 mb-1">{{ sub_service.name if sub_service else service.name }}</h1>
+    <div class="text-secondary">
+      {% if sub_service %}
+        Supported Living service within <a href="{{ url_for('main.service_detail', service_id=service.id, month=selected_month.strftime('%Y-%m')) }}">{{ service.name }}</a>
+      {% else %}
+        {{ service.service_type or 'Service' }} · {{ service.local_authority or 'Local Authority not set' }}
+      {% endif %}
+    </div>
+  </div>
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    {% if sub_service %}
+      <a class="btn btn-outline-secondary" href="{{ url_for('main.sl_sub_service_detail', sub_service_id=sub_service.id, month=selected_month.strftime('%Y-%m')) }}"><i class="bi bi-arrow-left me-1"></i>Back to scorecard</a>
+    {% else %}
+      <a class="btn btn-outline-secondary" href="{{ url_for('main.service_detail', service_id=service.id, month=selected_month.strftime('%Y-%m')) }}"><i class="bi bi-arrow-left me-1"></i>Back to scorecard</a>
+    {% endif %}
+    <form method="get" class="m-0">
+      <select class="form-select" name="month" onchange="this.form.submit()">
+        {% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}
+      </select>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg"><div class="card card-panel h-100"><div class="card-body text-center"><div class="small text-secondary fw-semibold">NPS SCORE</div><div class="display-5 fw-bold mt-2">{% if summary.score is not none %}{{ summary.score|round(1) }}{% else %}—{% endif %}</div></div></div></div>
+  <div class="col-6 col-lg"><div class="card card-panel h-100"><div class="card-body text-center"><div class="small text-secondary fw-semibold">RESPONSES</div><div class="display-5 fw-bold mt-2">{{ summary.total }}</div></div></div></div>
+  <div class="col-6 col-lg"><div class="card card-panel h-100"><div class="card-body text-center"><div class="small text-secondary fw-semibold">PROMOTERS</div><div class="display-5 fw-bold text-success mt-2">{{ summary.promoters }}</div><div class="small text-secondary">Scores 9–10</div></div></div></div>
+  <div class="col-6 col-lg"><div class="card card-panel h-100"><div class="card-body text-center"><div class="small text-secondary fw-semibold">PASSIVES</div><div class="display-5 fw-bold text-warning mt-2">{{ summary.passives }}</div><div class="small text-secondary">Scores 7–8</div></div></div></div>
+  <div class="col-6 col-lg"><div class="card card-panel h-100"><div class="card-body text-center"><div class="small text-secondary fw-semibold">DETRACTORS</div><div class="display-5 fw-bold text-danger mt-2">{{ summary.detractors }}</div><div class="small text-secondary">Scores 0–6</div></div></div></div>
+</div>
+
+{% if not sub_service and service.service_type == 'Supported Living' %}
+<div class="alert alert-light border mb-4">
+  <i class="bi bi-diagram-3 text-primary me-2"></i>
+  The headline NPS above uses all individual responses for {{ service.name }}: <strong>{{ direct_summary.total }}</strong> entered directly against the parent service{% if child_response_count %} plus <strong>{{ child_response_count }}</strong> entered against its Supported Living sub-services{% endif %}. Child NPS percentages are not averaged.
+</div>
+{% endif %}
+
+{% if current_user.is_admin %}
+<div class="visual-card mb-4">
+  <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start mb-3">
+    <div><div class="eyebrow">MANUAL INPUT</div><h2 class="h5 mb-1">Add monthly NPS responses</h2><p class="text-secondary mb-0">Add as many individual responses as needed. NPS is recalculated automatically when you save.</p></div>
+    <button class="btn btn-outline-primary btn-sm" type="button" id="addNpsRow"><i class="bi bi-plus-lg me-1"></i>Add row</button>
+  </div>
+  <form method="post">
+    <input type="hidden" name="month" value="{{ selected_month.strftime('%Y-%m') }}">
+    <div class="table-responsive">
+      <table class="table align-middle" id="npsEntryTable">
+        <thead><tr><th style="min-width:100px">Score</th><th style="min-width:140px">Response date</th><th style="min-width:300px">Comment / reason</th><th style="min-width:160px">Source</th><th></th></tr></thead>
+        <tbody>
+          {% for _ in range(3) %}
+          <tr>
+            <td><input class="form-control" type="number" min="0" max="10" step="1" name="score[]" placeholder="0–10"></td>
+            <td><input class="form-control" type="date" name="response_date[]" min="{{ selected_month.strftime('%Y-%m-01') }}"></td>
+            <td><textarea class="form-control" name="comment[]" rows="2" placeholder="Primary reason / comment"></textarea></td>
+            <td><input class="form-control" name="source[]" placeholder="e.g. Staff survey"></td>
+            <td class="text-end"><button class="btn btn-sm btn-outline-danger remove-nps-row" type="button" title="Remove row"><i class="bi bi-trash"></i></button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex justify-content-end"><button class="btn btn-primary" type="submit"><i class="bi bi-save me-1"></i>Save responses &amp; recalculate NPS</button></div>
+  </form>
+</div>
+{% endif %}
+
+<div class="visual-card p-0 overflow-hidden">
+  <div class="p-4 pb-2"><div class="eyebrow">RESPONSE DETAIL</div><h2 class="h5 mb-1">{{ selected_month.strftime('%B %Y') }} responses</h2><p class="text-secondary mb-0">The category is derived automatically from the 0–10 response score.</p></div>
+  <div class="table-responsive">
+    <table class="table power-table mb-0 align-middle">
+      <thead><tr><th>Date</th>{% if not sub_service and service.service_type == 'Supported Living' %}<th>SL Service</th>{% endif %}<th>Score</th><th>Category</th><th>Comment</th><th>Source</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for response in responses %}
+        <tr>
+          <td>{{ response.response_date.strftime('%d %b %Y') if response.response_date else '—' }}</td>
+          {% if not sub_service and service.service_type == 'Supported Living' %}<td>{{ response.sub_service.name if response.sub_service else service.name }}</td>{% endif %}
+          <td><strong>{{ response.score }}</strong></td>
+          <td><span class="nps-category nps-{{ response.category|lower }}">{{ response.category }}</span></td>
+          <td>{{ response.comment or '—' }}</td>
+          <td>{{ response.source or '—' }}</td>
+          {% if current_user.is_admin %}<td class="text-end"><form method="post" action="{{ url_for('main.delete_nps_response', response_id=response.id) }}" onsubmit="return confirm('Delete this NPS response?');"><button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button></form></td>{% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{% if not sub_service and service.service_type == 'Supported Living' %}{% if current_user.is_admin %}7{% else %}6{% endif %}{% else %}{% if current_user.is_admin %}6{% else %}5{% endif %}{% endif %}" class="text-center text-secondary py-4">No response-level NPS data has been entered for this month.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const table = document.getElementById('npsEntryTable');
+  const add = document.getElementById('addNpsRow');
+  if (!table || !add) return;
+  const body = table.querySelector('tbody');
+  function wireRemove(button){ button.addEventListener('click', function(){ const row = button.closest('tr'); if (body.children.length > 1) row.remove(); else row.querySelectorAll('input,textarea').forEach(el => el.value=''); }); }
+  table.querySelectorAll('.remove-nps-row').forEach(wireRemove);
+  add.addEventListener('click', function(){
+    const row = body.querySelector('tr').cloneNode(true);
+    row.querySelectorAll('input,textarea').forEach(el => el.value='');
+    wireRemove(row.querySelector('.remove-nps-row'));
+    body.appendChild(row);
+    row.querySelector('input[name="score[]"]').focus();
+  });
+})();
+</script>
+{% endblock %}

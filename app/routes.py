@@ -7,7 +7,10 @@ from sqlalchemy import func, or_
 from flask_login import current_user, login_user, logout_user
 
 from .extensions import db
-from .models import ImportLog, KPIDefinition, KPIResult, Service, SLSubService, SLSubServiceKPIResult, User
+from .models import (
+    ImportLog, KPIDefinition, KPIResult, NPSResponse, Service,
+    SLSubService, SLSubServiceKPIResult, User,
+)
 from .services.analytics import (
     available_months,
     domain_scores_for_month,
@@ -24,6 +27,7 @@ from .services.analytics import (
 from .services.exporter import build_board_pack
 from .services.importer import import_workbook
 from .services.scoring import calculate_rag
+from .services.nps import nps_summary, recalculate_after_response_change
 from .services.sl_aggregation import (
     AGGREGATION_METHODS,
     aggregate_all_parent_months,
@@ -516,6 +520,11 @@ def sl_sub_service_manual_entry(sub_service_id):
         created = 0
         errors = []
         for kpi in kpis:
+            if kpi.code == "NPS_SCORE" and NPSResponse.query.filter_by(
+                reporting_month=selected_month, sub_service_id=child.id
+            ).count():
+                # Response-level NPS is authoritative once detail has been entered.
+                continue
             prefix = f"kpi_{kpi.id}_"
             raw_value = (request.form.get(prefix + "value") or "").strip()
             commentary = (request.form.get(prefix + "commentary") or "").strip() or None
@@ -608,6 +617,231 @@ def sl_sub_service_manual_entry(sub_service_id):
 
 
 
+def _parse_response_date(value, fallback_month):
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("Response date must be a valid date.") from exc
+    if parsed.year != fallback_month.year or parsed.month != fallback_month.month:
+        raise ValueError("Response date must fall within the selected reporting month.")
+    return parsed
+
+
+def _nps_month(value):
+    if value:
+        try:
+            return date.fromisoformat(value + "-01")
+        except ValueError:
+            pass
+    return latest_month() or date.today().replace(day=1)
+
+
+def _save_nps_response_rows(reporting_month, service_id=None, sub_service_id=None):
+    scores = request.form.getlist("score[]")
+    comments = request.form.getlist("comment[]")
+    response_dates = request.form.getlist("response_date[]")
+    sources = request.form.getlist("source[]")
+
+    created = 0
+    errors = []
+    max_len = max(len(scores), len(comments), len(response_dates), len(sources), 0)
+    for index in range(max_len):
+        raw_score = (scores[index] if index < len(scores) else "").strip()
+        comment = (comments[index] if index < len(comments) else "").strip() or None
+        raw_date = response_dates[index] if index < len(response_dates) else ""
+        source = (sources[index] if index < len(sources) else "").strip() or None
+
+        # Ignore completely blank rows.
+        if not raw_score and not comment and not raw_date and not source:
+            continue
+        try:
+            score = int(raw_score)
+            if score < 0 or score > 10:
+                raise ValueError("score must be between 0 and 10")
+            response_date = _parse_response_date(raw_date, reporting_month)
+            db.session.add(NPSResponse(
+                reporting_month=reporting_month,
+                response_date=response_date,
+                service_id=service_id,
+                sub_service_id=sub_service_id,
+                score=score,
+                comment=comment,
+                source=source,
+            ))
+            created += 1
+        except Exception as exc:
+            errors.append(f"Row {index + 1}: {exc}")
+
+    if errors:
+        db.session.rollback()
+        return 0, errors
+    db.session.commit()
+    recalculate_after_response_change(
+        reporting_month,
+        service_id=service_id,
+        sub_service_id=sub_service_id,
+    )
+    return created, []
+
+
+@bp.route("/service/<int:service_id>/nps", methods=["GET", "POST"])
+def service_nps_detail(service_id):
+    service = Service.query.get_or_404(service_id)
+    selected_month = _nps_month(request.values.get("month"))
+
+    if request.method == "POST":
+        _admin_required()
+        created, errors = _save_nps_response_rows(selected_month, service_id=service.id)
+        if errors:
+            flash("Nothing was saved: " + " | ".join(errors[:5]), "danger")
+        elif created:
+            flash(
+                f"Added {created} NPS response(s) for {service.name} / {selected_month.strftime('%B %Y')}. "
+                "The service and group NPS scores were recalculated.",
+                "success",
+            )
+        else:
+            flash("No NPS responses were entered.", "warning")
+        return redirect(url_for("main.service_nps_detail", service_id=service.id, month=selected_month.strftime("%Y-%m")))
+
+    direct_responses = (
+        NPSResponse.query
+        .filter_by(reporting_month=selected_month, service_id=service.id, sub_service_id=None)
+        .order_by(NPSResponse.response_date.desc(), NPSResponse.id.desc())
+        .all()
+    )
+    child_responses = []
+    if service.service_type == "Supported Living":
+        child_ids = [child.id for child in service.sl_sub_services]
+        if child_ids:
+            child_responses = (
+                NPSResponse.query
+                .filter(
+                    NPSResponse.reporting_month == selected_month,
+                    NPSResponse.sub_service_id.in_(child_ids),
+                )
+                .order_by(NPSResponse.response_date.desc(), NPSResponse.id.desc())
+                .all()
+            )
+    aggregate_responses = direct_responses + child_responses
+    response_months = {
+        row[0]
+        for row in NPSResponse.query.with_entities(NPSResponse.reporting_month)
+        .filter_by(service_id=service.id, sub_service_id=None)
+        .distinct().all()
+    }
+    all_child_ids = [child.id for child in service.sl_sub_services]
+    if all_child_ids:
+        response_months.update(
+            row[0]
+            for row in NPSResponse.query.with_entities(NPSResponse.reporting_month)
+            .filter(NPSResponse.sub_service_id.in_(all_child_ids))
+            .distinct().all()
+        )
+    response_months.add(selected_month)
+    months = sorted(response_months, reverse=True)
+
+    return render_template(
+        "nps_detail.html",
+        service=service,
+        sub_service=None,
+        selected_month=selected_month,
+        responses=aggregate_responses,
+        aggregate_responses=aggregate_responses,
+        summary=nps_summary(aggregate_responses),
+        direct_summary=nps_summary(direct_responses),
+        child_response_count=len(child_responses),
+        months=months,
+    )
+
+
+@bp.route("/sl-service/<int:sub_service_id>/nps", methods=["GET", "POST"])
+def sl_sub_service_nps_detail(sub_service_id):
+    child = SLSubService.query.get_or_404(sub_service_id)
+    service = child.parent_service
+    selected_month = _nps_month(request.values.get("month"))
+
+    if request.method == "POST":
+        _admin_required()
+        created, errors = _save_nps_response_rows(selected_month, sub_service_id=child.id)
+        if errors:
+            flash("Nothing was saved: " + " | ".join(errors[:5]), "danger")
+        elif created:
+            flash(
+                f"Added {created} NPS response(s) for {child.name} / {selected_month.strftime('%B %Y')}. "
+                f"{service.name} and the group NPS scores were recalculated.",
+                "success",
+            )
+        else:
+            flash("No NPS responses were entered.", "warning")
+        return redirect(url_for("main.sl_sub_service_nps_detail", sub_service_id=child.id, month=selected_month.strftime("%Y-%m")))
+
+    responses = (
+        NPSResponse.query
+        .filter_by(reporting_month=selected_month, sub_service_id=child.id)
+        .order_by(NPSResponse.response_date.desc(), NPSResponse.id.desc())
+        .all()
+    )
+    months = [
+        row[0]
+        for row in NPSResponse.query.with_entities(NPSResponse.reporting_month)
+        .filter_by(sub_service_id=child.id)
+        .distinct().order_by(NPSResponse.reporting_month.desc()).all()
+    ]
+    if selected_month not in months:
+        months.insert(0, selected_month)
+
+    return render_template(
+        "nps_detail.html",
+        service=service,
+        sub_service=child,
+        selected_month=selected_month,
+        responses=responses,
+        aggregate_responses=responses,
+        summary=nps_summary(responses),
+        direct_summary=nps_summary(responses),
+        child_response_count=0,
+        months=months,
+    )
+
+
+@bp.route("/nps-response/<int:response_id>/delete", methods=["POST"])
+def delete_nps_response(response_id):
+    _admin_required()
+    response = NPSResponse.query.get_or_404(response_id)
+    reporting_month = response.reporting_month
+    service_id = response.service_id
+    sub_service_id = response.sub_service_id
+
+    if sub_service_id:
+        child = SLSubService.query.get_or_404(sub_service_id)
+        redirect_url = url_for(
+            "main.sl_sub_service_nps_detail",
+            sub_service_id=child.id,
+            month=reporting_month.strftime("%Y-%m"),
+        )
+    else:
+        redirect_url = url_for(
+            "main.service_nps_detail",
+            service_id=service_id,
+            month=reporting_month.strftime("%Y-%m"),
+        )
+
+    db.session.delete(response)
+    db.session.commit()
+    recalculate_after_response_change(
+        reporting_month,
+        service_id=service_id,
+        sub_service_id=sub_service_id,
+    )
+    flash("NPS response deleted and the NPS scores were recalculated.", "success")
+    return redirect(redirect_url)
+
+
+
 def _parse_manual_month(value):
     if not value:
         return latest_month() or date.today().replace(day=1)
@@ -650,6 +884,24 @@ def manual_entry():
         created = 0
         errors = []
         for kpi in kpis:
+            if kpi.code == "NPS_SCORE":
+                if scope == "group":
+                    detailed_nps_count = NPSResponse.query.filter_by(reporting_month=selected_month).count()
+                elif service:
+                    detailed_nps_count = NPSResponse.query.filter_by(
+                        reporting_month=selected_month, service_id=service.id, sub_service_id=None
+                    ).count()
+                    child_ids = [child.id for child in service.sl_sub_services]
+                    if child_ids:
+                        detailed_nps_count += NPSResponse.query.filter(
+                            NPSResponse.reporting_month == selected_month,
+                            NPSResponse.sub_service_id.in_(child_ids),
+                        ).count()
+                else:
+                    detailed_nps_count = 0
+                if detailed_nps_count:
+                    # Do not overwrite a mathematically calculated response-level NPS.
+                    continue
             prefix = f"kpi_{kpi.id}_"
             raw_value = (request.form.get(prefix + "value") or "").strip()
             commentary = (request.form.get(prefix + "commentary") or "").strip() or None
