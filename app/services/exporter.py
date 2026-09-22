@@ -302,23 +302,18 @@ def build_board_pack(reporting_month):
             _rag_fill(cell)
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        row_values, row_weights = [], []
-        for col_idx in range(first_kpi_col, last_kpi_col + 1):
-            letter = get_column_letter(col_idx)
-            row_values.append(
-                f'IF({letter}{row_idx}="Green",3,IF({letter}{row_idx}="Amber",2,IF({letter}{row_idx}="Red",1,0)))*{letter}$5'
-            )
-            row_weights.append(
-                f'IF(OR({letter}{row_idx}="Green",{letter}{row_idx}="Amber",{letter}{row_idx}="Red"),{letter}$5,0)'
-            )
-        score_formula = f'=IFERROR(({"+".join(row_values)})/({"+".join(row_weights)}),"")'
-        rng = f"{get_column_letter(first_kpi_col)}{row_idx}:{get_column_letter(last_kpi_col)}{row_idx}"
-        all_ws.cell(row=row_idx, column=5, value=score_formula)
+        # Write calculated service summary values directly. This avoids relying on
+        # Excel to recalculate formulas when the workbook is opened or previewed.
+        all_ws.cell(row=row_idx, column=5, value=row["score"] if row["score"] is not None else "")
         all_ws.cell(row=row_idx, column=5).number_format = "0.00"
-        all_ws.cell(row=row_idx, column=6, value=_rag_formula(f"E{row_idx}"))
-        all_ws.cell(row=row_idx, column=last_kpi_col + 1, value=f'=COUNTIF({rng},"Red")')
-        all_ws.cell(row=row_idx, column=last_kpi_col + 2, value=f'=COUNTIF({rng},"Amber")')
-        all_ws.cell(row=row_idx, column=last_kpi_col + 3, value=f'=IF(E{row_idx}="","",E{row_idx}+ROW()/1000000)')
+        all_ws.cell(row=row_idx, column=6, value=row["overall"] or "Unscored")
+        all_ws.cell(row=row_idx, column=last_kpi_col + 1, value=row["red_count"])
+        all_ws.cell(row=row_idx, column=last_kpi_col + 2, value=row["amber_count"])
+        all_ws.cell(
+            row=row_idx,
+            column=last_kpi_col + 3,
+            value=(row["score"] + (row_idx / 1000000)) if row["score"] is not None else "",
+        )
         all_ws.cell(row=row_idx, column=last_kpi_col + 4, value=service.service_type or "Not set")
         _rag_fill(all_ws.cell(row=row_idx, column=6))
         for col in range(1, len(headers) + 1):
@@ -355,27 +350,47 @@ def build_board_pack(reporting_month):
     )
     _section(ws, 4, "HEADLINE PERFORMANCE", 1, 10)
 
-    # Four dashboard tiles.
+    # Five dashboard tiles. Values are calculated in Python so the Executive
+    # Summary is populated immediately even in viewers that do not recalculate
+    # Excel formulas.
+    scored_rows = [row for row in service_rows if row["score"] is not None]
+    overall_score = (
+        round(sum(row["score"] for row in scored_rows) / len(scored_rows), 2)
+        if scored_rows else None
+    )
+    if overall_score is None:
+        overall_rag = "Unscored"
+    elif overall_score >= 2.5:
+        overall_rag = "Green"
+    elif overall_score >= 1.75:
+        overall_rag = "Amber"
+    else:
+        overall_rag = "Red"
+
+    red_services = sum(1 for row in service_rows if row["overall"] == "Red")
+    amber_services = sum(1 for row in service_rows if row["overall"] == "Amber")
+    services_reported = len(scored_rows)
+
     card_ranges = [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10)]
     labels = ["Overall Service Score", "Overall RAG", "Red Services", "Amber Services", "Services Reported"]
-    formulas = [
-        '=IFERROR(AVERAGE(\'All Services\'!$E$6:$E$500),"")',
-        _rag_formula("A6"),
-        '=COUNTIF(\'All Services\'!$F$6:$F$500,"Red")',
-        '=COUNTIF(\'All Services\'!$F$6:$F$500,"Amber")',
-        '=COUNT(\'All Services\'!$E$6:$E$500)',
+    values = [
+        overall_score if overall_score is not None else "",
+        overall_rag,
+        red_services,
+        amber_services,
+        services_reported,
     ]
     accents = [BLUE, BLUE, RED_DARK, AMBER_DARK, NAVY]
-    for i, ((c1, c2), label, formula, accent) in enumerate(zip(card_ranges, labels, formulas, accents)):
+    for i, ((c1, c2), label, value, accent) in enumerate(zip(card_ranges, labels, values, accents)):
         ws.merge_cells(start_row=5, start_column=c1, end_row=5, end_column=c2)
         ws.merge_cells(start_row=6, start_column=c1, end_row=7, end_column=c2)
         label_cell = ws.cell(row=5, column=c1, value=label)
-        value_cell = ws.cell(row=6, column=c1, value=formula)
+        value_cell = ws.cell(row=6, column=c1, value=value)
         _style_card(ws, label_cell, value_cell, fill=WHITE, accent=accent, value_format="0.00" if i == 0 else None)
         ws.row_dimensions[5].height = 19
         ws.row_dimensions[6].height = 26
         ws.row_dimensions[7].height = 18
-    _add_rag_conditional_formatting(ws, "C6:C6")
+    _rag_fill(ws["C6"])
 
     _section(ws, 9, "SERVICE EXCEPTIONS & PERFORMANCE", 1, 10)
     ws["A10"] = "Bottom 5 services"
@@ -389,21 +404,33 @@ def build_board_pack(reporting_month):
         ws.cell(row=11, column=start_col + 3, value="Red KPIs")
         _header(ws[11][start_col - 1:start_col + 3])
 
-    key_letter = get_column_letter(sort_key_col)
+    ranked_rows = sorted(
+        [row for row in service_rows if row["score"] is not None],
+        key=lambda row: (row["score"], row["service"].name),
+    )
+    bottom_rows = ranked_rows[:5]
+    top_rows = list(reversed(ranked_rows[-5:]))
+
     for i in range(5):
         r = 12 + i
-        rank = i + 1
-        ws.cell(row=r, column=1, value=f'=IFERROR(INDEX(\'All Services\'!$A$6:$A$500,MATCH(SMALL(\'All Services\'!${key_letter}$6:${key_letter}$500,{rank}),\'All Services\'!${key_letter}$6:${key_letter}$500,0)),"")')
-        ws.cell(row=r, column=2, value=f'=IF(A{r}="","",INDEX(\'All Services\'!$E$6:$E$500,MATCH(A{r},\'All Services\'!$A$6:$A$500,0)))')
-        ws.cell(row=r, column=3, value=f'=IF(A{r}="","",INDEX(\'All Services\'!$F$6:$F$500,MATCH(A{r},\'All Services\'!$A$6:$A$500,0)))')
-        ws.cell(row=r, column=4, value=f'=IF(A{r}="","",INDEX(\'All Services\'!${get_column_letter(last_kpi_col + 1)}$6:${get_column_letter(last_kpi_col + 1)}$500,MATCH(A{r},\'All Services\'!$A$6:$A$500,0)))')
+        if i < len(bottom_rows):
+            item = bottom_rows[i]
+            ws.cell(row=r, column=1, value=item["service"].name)
+            ws.cell(row=r, column=2, value=item["score"])
+            ws.cell(row=r, column=3, value=item["overall"])
+            ws.cell(row=r, column=4, value=item["red_count"])
+            ws.cell(row=r, column=2).number_format = "0.00"
+            _rag_fill(ws.cell(row=r, column=3))
 
-        ws.cell(row=r, column=6, value=f'=IFERROR(INDEX(\'All Services\'!$A$6:$A$500,MATCH(LARGE(\'All Services\'!${key_letter}$6:${key_letter}$500,{rank}),\'All Services\'!${key_letter}$6:${key_letter}$500,0)),"")')
-        ws.cell(row=r, column=7, value=f'=IF(F{r}="","",INDEX(\'All Services\'!$E$6:$E$500,MATCH(F{r},\'All Services\'!$A$6:$A$500,0)))')
-        ws.cell(row=r, column=8, value=f'=IF(F{r}="","",INDEX(\'All Services\'!$F$6:$F$500,MATCH(F{r},\'All Services\'!$A$6:$A$500,0)))')
-        ws.cell(row=r, column=9, value=f'=IF(F{r}="","",INDEX(\'All Services\'!${get_column_letter(last_kpi_col + 1)}$6:${get_column_letter(last_kpi_col + 1)}$500,MATCH(F{r},\'All Services\'!$A$6:$A$500,0)))')
-        ws.cell(row=r, column=2).number_format = "0.00"
-        ws.cell(row=r, column=7).number_format = "0.00"
+        if i < len(top_rows):
+            item = top_rows[i]
+            ws.cell(row=r, column=6, value=item["service"].name)
+            ws.cell(row=r, column=7, value=item["score"])
+            ws.cell(row=r, column=8, value=item["overall"])
+            ws.cell(row=r, column=9, value=item["red_count"])
+            ws.cell(row=r, column=7).number_format = "0.00"
+            _rag_fill(ws.cell(row=r, column=8))
+
     _add_rag_conditional_formatting(ws, "C12:C16")
     _add_rag_conditional_formatting(ws, "H12:H16")
     _zebra(ws, 12, 16, 1, 4)
@@ -444,10 +471,16 @@ def build_board_pack(reporting_month):
     ws.cell(row=rag_start + 1, column=1, value="RAG")
     ws.cell(row=rag_start + 1, column=2, value="Count")
     _header(ws[rag_start + 1][0:2])
+    rag_counts = {
+        "Green": sum(1 for row in service_rows if row["overall"] == "Green"),
+        "Amber": sum(1 for row in service_rows if row["overall"] == "Amber"),
+        "Red": sum(1 for row in service_rows if row["overall"] == "Red"),
+        "Unscored": sum(1 for row in service_rows if row["overall"] == "Unscored"),
+    }
     for offset, rag in enumerate(["Green", "Amber", "Red", "Unscored"], 2):
         rr = rag_start + offset
         ws.cell(row=rr, column=1, value=rag)
-        ws.cell(row=rr, column=2, value=f'=COUNTIF(\'All Services\'!$F$6:$F$500,A{rr})')
+        ws.cell(row=rr, column=2, value=rag_counts[rag])
         _rag_fill(ws.cell(row=rr, column=1))
 
     pie = PieChart()
