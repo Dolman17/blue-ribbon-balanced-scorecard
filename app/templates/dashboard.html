@@ -66,6 +66,36 @@
     </div>
   </section>
 
+  <section class="dashboard-widget widget-half" data-widget-id="kpi_risk_ranking" draggable="false">
+    <div class="widget-drag-handle" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></div>
+    <div class="visual-card h-100"><div class="visual-title"><div><h2>KPI risk ranking</h2><p>KPIs creating the most Red and Amber results this month</p></div></div><div id="kpiRiskChart" class="insight-chart"></div></div>
+  </section>
+
+  <section class="dashboard-widget widget-half" data-widget-id="rag_movement" draggable="false">
+    <div class="widget-drag-handle" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></div>
+    <div class="visual-card h-100"><div class="visual-title"><div><h2>RAG movement</h2><p>{% if rag_movement.previous_month %}Overall service position versus {{ rag_movement.previous_month.strftime('%B %Y') }}{% else %}A previous reporting month is needed for comparison{% endif %}</p></div></div><div id="ragMovementChart" class="insight-chart"></div></div>
+  </section>
+
+  <section class="dashboard-widget widget-wide" data-widget-id="nps_trend" draggable="false">
+    <div class="widget-drag-handle" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></div>
+    <div class="visual-card h-100"><div class="visual-title"><div><h2>NPS trend & response volume</h2><p>Calculated from the underlying individual responses for the filtered portfolio</p></div><span class="visual-meta">Last 12 reporting months</span></div><div id="npsTrendChart" class="insight-chart insight-chart-wide"></div></div>
+  </section>
+
+  <section class="dashboard-widget widget-narrow" data-widget-id="risk_movers" draggable="false">
+    <div class="widget-drag-handle" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></div>
+    <div class="visual-card h-100"><div class="visual-title"><div><h2>Services moving risk</h2><p>Overall RAG changes since the previous month</p></div></div>
+      <div class="risk-mover-columns">
+        <div><div class="risk-mover-title improving"><i class="bi bi-arrow-up-right-circle"></i> Improving</div>{% for item in improving_services %}<div class="risk-mover-row"><strong>{{ item.service.name }}</strong><span><span class="rag rag-{{ item.previous|lower }}">{{ item.previous }}</span><i class="bi bi-arrow-right"></i><span class="rag rag-{{ item.current|lower }}">{{ item.current }}</span></span></div>{% else %}<div class="small text-secondary py-2">No services moved to a better RAG.</div>{% endfor %}</div>
+        <div><div class="risk-mover-title deteriorating"><i class="bi bi-arrow-down-right-circle"></i> Deteriorating</div>{% for item in deteriorating_services %}<div class="risk-mover-row"><strong>{{ item.service.name }}</strong><span><span class="rag rag-{{ item.previous|lower }}">{{ item.previous }}</span><i class="bi bi-arrow-right"></i><span class="rag rag-{{ item.current|lower }}">{{ item.current }}</span></span></div>{% else %}<div class="small text-secondary py-2">No services moved to a worse RAG.</div>{% endfor %}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dashboard-widget widget-full" data-widget-id="kpi_heatmap" draggable="false">
+    <div class="widget-drag-handle" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></div>
+    <div class="visual-card h-100"><div class="visual-title"><div><h2>Service × KPI heatmap</h2><p>Portfolio-wide RAG view. Green = 3, Amber = 2, Red = 1, Unscored = 0.</p></div><span class="visual-meta">{{ heatmap_services|length }} services × {{ heatmap_kpis|length }} KPIs</span></div><div class="heatmap-scroll"><div id="kpiHeatmap" class="heatmap-chart"></div></div></div>
+  </section>
+
   <section class="dashboard-widget widget-wide" data-widget-id="service_risk" draggable="false">
     <div class="widget-drag-handle" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></div>
     <div class="visual-card h-100"><div class="visual-title"><div><h2>Service risk overview</h2><p>Lowest weighted score first</p></div><span class="visual-meta">{{ service_rows|length }} services</span></div>
@@ -183,6 +213,44 @@ document.querySelectorAll('.service-risk-row').forEach(row => {
 
 const plotConfig = {displayModeBar:false,responsive:true};
 const commonFont = {family:'Segoe UI, Arial, sans-serif', color:'#46525c'};
+
+const kpiRisk = {{ kpi_risk_ranking|tojson }};
+if (document.getElementById('kpiRiskChart')) {
+  const shownRisk = kpiRisk.slice(0, 12).reverse();
+  Plotly.newPlot('kpiRiskChart', [
+    {type:'bar',orientation:'h',y:shownRisk.map(v=>v.name),x:shownRisk.map(v=>v.red),name:'Red',marker:{color:'#c83c3c'},hovertemplate:'%{y}<br>Red: %{x}<extra></extra>'},
+    {type:'bar',orientation:'h',y:shownRisk.map(v=>v.name),x:shownRisk.map(v=>v.amber),name:'Amber',marker:{color:'#d99500'},hovertemplate:'%{y}<br>Amber: %{x}<extra></extra>'}
+  ], {barmode:'stack',margin:{l:130,r:20,t:10,b:35},xaxis:{title:'Service KPI results',dtick:1,gridcolor:'#edf0f2'},yaxis:{automargin:true},legend:{orientation:'h',x:.5,xanchor:'center',y:-.15},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:commonFont}, plotConfig);
+}
+
+const ragMovement = {{ rag_movement|tojson }};
+if (document.getElementById('ragMovementChart')) {
+  const labels = ragMovement.previous_month ? ['Previous month','Current month'] : ['Current month'];
+  const periods = ragMovement.previous_month ? [ragMovement.previous, ragMovement.current] : [ragMovement.current];
+  const traces = [
+    ['Green','#2e8b57'],['Amber','#d99500'],['Red','#c83c3c'],['Unscored','#9aa4ad']
+  ].map(([rag,color]) => ({type:'bar',x:labels,y:periods.map(v=>v[rag]||0),name:rag,marker:{color},hovertemplate:`%{x}<br>${rag}: %{y}<extra></extra>`}));
+  Plotly.newPlot('ragMovementChart', traces, {barmode:'stack',margin:{l:45,r:15,t:10,b:45},yaxis:{title:'Services',dtick:1,gridcolor:'#edf0f2'},legend:{orientation:'h',x:.5,xanchor:'center',y:-.18},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:commonFont}, plotConfig);
+}
+
+const npsTrend = {{ nps_trend|tojson }};
+if (document.getElementById('npsTrendChart')) {
+  const npsLabels = npsTrend.map(v => new Date(v.month + 'T00:00:00').toLocaleDateString('en-GB',{month:'short',year:'2-digit'}));
+  Plotly.newPlot('npsTrendChart', [
+    {type:'bar',x:npsLabels,y:npsTrend.map(v=>v.responses),name:'Responses',marker:{color:'rgba(31,91,131,.22)'},yaxis:'y2',hovertemplate:'%{x}<br>Responses: %{y}<extra></extra>'},
+    {type:'scatter',mode:'lines+markers',x:npsLabels,y:npsTrend.map(v=>v.score),name:'NPS',line:{width:3,color:'#1f5b83'},marker:{size:8,color:'#1f5b83'},connectgaps:false,hovertemplate:'%{x}<br>NPS: %{y:.0f}<extra></extra>'}
+  ], {margin:{l:50,r:50,t:10,b:45},yaxis:{title:'NPS',range:[-100,100],gridcolor:'#edf0f2',zeroline:true,zerolinecolor:'#cfd7dc'},yaxis2:{title:'Responses',overlaying:'y',side:'right',rangemode:'tozero',showgrid:false},legend:{orientation:'h',x:.5,xanchor:'center',y:-.18},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:commonFont}, plotConfig);
+}
+
+const heatmapServices = {{ heatmap_services|tojson }};
+const heatmapKpis = {{ heatmap_kpis|tojson }};
+const heatmapValues = {{ heatmap_values|tojson }};
+if (document.getElementById('kpiHeatmap') && heatmapServices.length && heatmapKpis.length) {
+  const heatmapHeight = Math.max(360, Math.min(900, 90 + heatmapServices.length * 26));
+  document.getElementById('kpiHeatmap').style.height = heatmapHeight + 'px';
+  Plotly.newPlot('kpiHeatmap', [{type:'heatmap',x:heatmapKpis,y:heatmapServices,z:heatmapValues,zmin:0,zmax:3,showscale:false,xgap:2,ygap:2,colorscale:[[0,'#e1e5e8'],[0.24,'#e1e5e8'],[0.25,'#c83c3c'],[0.49,'#c83c3c'],[0.5,'#d99500'],[0.74,'#d99500'],[0.75,'#2e8b57'],[1,'#2e8b57']],hovertemplate:'%{y}<br>%{x}<br>Score: %{z}<extra></extra>'}], {margin:{l:150,r:20,t:10,b:150},xaxis:{tickangle:-45,automargin:true,side:'bottom'},yaxis:{automargin:true,autorange:'reversed'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:commonFont}, plotConfig);
+}
+
 const ragValues = [{{ counts.get('Green',0) }}, {{ counts.get('Amber',0) }}, {{ counts.get('Red',0) }}, {{ counts.get('Unscored',0) }}];
 Plotly.newPlot('ragDonut',[{type:'pie',hole:.68,labels:['Green','Amber','Red','Unscored'],values:ragValues,marker:{colors:['#2e8b57','#d99500','#c83c3c','#9aa4ad']},textinfo:'percent',hovertemplate:'%{label}: %{value}<extra></extra>'}],{margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',x:.5,xanchor:'center',y:-.05},paper_bgcolor:'rgba(0,0,0,0)',font:commonFont},plotConfig);
 const domains = {{ domain_scores.keys()|list|tojson }};

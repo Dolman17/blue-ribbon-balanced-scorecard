@@ -206,3 +206,7 @@ The Executive dashboard now includes a **Customise dashboard** button. Each auth
 - Five cards per row on very large screens.
 - Reduced padding, value size, labels and button sizing only on the Service View KPI grid.
 - Supported Living drill-down, NPS detail, trends and all scoring/data behaviour are unchanged.
+
+
+## Phase 3.25 – Executive Insight Charts
+Added movable Executive dashboard widgets for KPI risk ranking, month-on-month RAG movement, NPS trend with response volume, services improving/deteriorating, and a Service x KPI heatmap. Existing per-user dashboard layout automatically appends the new widgets. Supported Living parent service pages now also include a child-service comparison chart.

@@ -63,6 +63,14 @@
 {% endif %}
 
 
+{% if service.service_type == 'Supported Living' and sub_service_rows %}
+<div class="visual-card mb-4">
+  <div class="visual-title"><div><h2>Supported Living service comparison</h2><p>Overall weighted score across the services sitting beneath {{ service.name }}</p></div><span class="visual-meta">Score range 1–3</span></div>
+  <div id="slComparisonChart" class="sl-comparison-chart"></div>
+</div>
+{% endif %}
+
+
 {% if trends %}<div class="mb-2"><div class="eyebrow">TRENDING</div><h2 class="h4">12-month KPI trends</h2><p class="text-secondary">Numeric measures only. Each chart retains its own unit so percentage and count KPIs are not mixed.</p></div>
 <div class="row g-4">
 {% for trend in trends %}<div class="col-lg-6"><div class="card card-panel"><div class="card-body"><div class="d-flex justify-content-between"><h3 class="h6">{{ trend.kpi.name }}</h3><span class="small text-secondary">{{ trend.kpi.unit or '' }}</span></div><div id="trend-{{ trend.kpi.id }}" class="small-trend"></div></div></div></div>{% endfor %}
@@ -74,6 +82,11 @@ document.querySelectorAll('.service-risk-row[data-href]').forEach(function(row){
   row.addEventListener('click', function(event){ if(event.target.closest('a,button,input,select,textarea')) return; window.location.href = row.dataset.href; });
   row.addEventListener('keydown', function(event){ if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); window.location.href = row.dataset.href; } });
 });
+{% if service.service_type == 'Supported Living' and sub_service_rows %}
+const slNames = {{ sub_service_rows|map(attribute='sub_service.name')|list|tojson }};
+const slScores = {{ sub_service_rows|map(attribute='score')|list|tojson }};
+Plotly.newPlot('slComparisonChart', [{type:'bar',orientation:'h',y:slNames,x:slScores,marker:{color:slScores.map(v=>v===null?'#9aa4ad':v>=2.5?'#2e8b57':v>=1.75?'#d99500':'#c83c3c')},hovertemplate:'%{y}: %{x:.2f}/3<extra></extra>'}], {margin:{l:150,r:25,t:10,b:35},xaxis:{range:[0,3],dtick:.5,gridcolor:'#edf0f2'},yaxis:{automargin:true,autorange:'reversed'},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'}, {displayModeBar:false,responsive:true});
+{% endif %}
 </script>
 {% if trends %}<script>
 {% for trend in trends %}

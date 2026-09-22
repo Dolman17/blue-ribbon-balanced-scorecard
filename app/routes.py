@@ -44,6 +44,11 @@ USER_ROLES = ["Admin", "Executive", "Regional Manager", "Registered Manager", "V
 
 EXEC_DASHBOARD_WIDGETS = [
     "nps_responses",
+    "kpi_risk_ranking",
+    "rag_movement",
+    "nps_trend",
+    "risk_movers",
+    "kpi_heatmap",
     "service_risk",
     "indicator_distribution",
     "domain_health",
@@ -241,6 +246,110 @@ def dashboard():
     ]
     exec_nps_summary = nps_summary(nps_responses)
 
+    # --- Additional Executive insight widgets ---
+    # KPI risk ranking: count Red and Amber service results by KPI.
+    kpi_risk = {}
+    for result in service_results:
+        key = result.kpi.name
+        item = kpi_risk.setdefault(key, {"name": key, "red": 0, "amber": 0})
+        if result.rag == "Red":
+            item["red"] += 1
+        elif result.rag == "Amber":
+            item["amber"] += 1
+    kpi_risk_ranking = sorted(
+        kpi_risk.values(),
+        key=lambda item: (item["red"], item["amber"], item["name"]),
+        reverse=True,
+    )
+
+    # Previous available reporting month for RAG movement and risk movers.
+    previous_month = None
+    if selected_month in months:
+        selected_index = months.index(selected_month)
+        if selected_index + 1 < len(months):
+            previous_month = months[selected_index + 1]
+
+    previous_rows = []
+    if previous_month:
+        previous_rows = service_rows_for_month(
+            previous_month, filters["local_authority"] or None, filters["regional_manager"] or None,
+            filters["registered_manager"] or None, filters["service_id"], None, filters["service_type"] or None,
+        )
+
+    def _overall_counts(rows):
+        return {
+            rag: sum(1 for row in rows if row["overall"] == rag)
+            for rag in ("Green", "Amber", "Red", "Unscored")
+        }
+
+    rag_movement = {
+        "current": _overall_counts(service_rows),
+        "previous": _overall_counts(previous_rows),
+        "previous_month": previous_month,
+    }
+
+    # Services whose overall RAG moved between the two latest periods.
+    risk_order = {"Red": 0, "Amber": 1, "Green": 2, "Unscored": -1}
+    previous_by_service = {row["service"].id: row for row in previous_rows}
+    improving_services = []
+    deteriorating_services = []
+    for row in service_rows:
+        previous = previous_by_service.get(row["service"].id)
+        if not previous or row["overall"] == previous["overall"]:
+            continue
+        current_rank = risk_order.get(row["overall"], -1)
+        previous_rank = risk_order.get(previous["overall"], -1)
+        if current_rank < 0 or previous_rank < 0:
+            continue
+        movement = {
+            "service": row["service"],
+            "previous": previous["overall"],
+            "current": row["overall"],
+            "previous_score": previous["score"],
+            "current_score": row["score"],
+        }
+        if current_rank > previous_rank:
+            improving_services.append(movement)
+        else:
+            deteriorating_services.append(movement)
+
+    # Service x KPI heatmap. RAG values are encoded 3=Green, 2=Amber, 1=Red, 0=Unscored.
+    heatmap_kpis = []
+    seen_kpis = set()
+    for row in service_rows:
+        for result in row["results"]:
+            if result.kpi.name not in seen_kpis:
+                seen_kpis.add(result.kpi.name)
+                heatmap_kpis.append(result.kpi.name)
+    heatmap_services = [row["service"].name for row in service_rows]
+    heatmap_values = []
+    rag_number = {"Green": 3, "Amber": 2, "Red": 1, "Unscored": 0}
+    for row in service_rows:
+        by_name = {result.kpi.name: result.rag for result in row["results"]}
+        heatmap_values.append([rag_number.get(by_name.get(kpi, "Unscored"), 0) for kpi in heatmap_kpis])
+
+    # Correct NPS trend from underlying responses plus monthly response volume.
+    nps_trend = []
+    trend_months = list(reversed(months[:12]))
+    for trend_month in trend_months:
+        trend_rows = service_rows_for_month(
+            trend_month, filters["local_authority"] or None, filters["regional_manager"] or None,
+            filters["registered_manager"] or None, filters["service_id"], None, filters["service_type"] or None,
+        )
+        visible_ids = {row["service"].id for row in trend_rows}
+        month_responses = NPSResponse.query.filter_by(reporting_month=trend_month).all()
+        filtered_responses = [
+            response for response in month_responses
+            if response.service_id in visible_ids
+            or (response.sub_service is not None and response.sub_service.parent_service_id in visible_ids)
+        ]
+        summary = nps_summary(filtered_responses)
+        nps_trend.append({
+            "month": trend_month.isoformat(),
+            "score": summary["score"],
+            "responses": summary["total"],
+        })
+
     return render_template(
         "dashboard.html", selected_month=selected_month, months=months,
         service_rows=service_rows, top_services=top_services, bottom_services=bottom_services,
@@ -255,7 +364,10 @@ def dashboard():
         ),
         filters=filters, options=options,
         nps_responses=nps_responses, exec_nps_summary=exec_nps_summary,
-        dashboard_layout=_dashboard_layout_for_user(),
+        kpi_risk_ranking=kpi_risk_ranking, rag_movement=rag_movement,
+        improving_services=improving_services, deteriorating_services=deteriorating_services,
+        heatmap_kpis=heatmap_kpis, heatmap_services=heatmap_services, heatmap_values=heatmap_values,
+        nps_trend=nps_trend, dashboard_layout=_dashboard_layout_for_user(),
     )
 
 
