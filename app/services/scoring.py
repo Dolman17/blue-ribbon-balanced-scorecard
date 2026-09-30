@@ -14,6 +14,7 @@ DEFAULT_KPIS = [
     dict(code="SICKNESS_RATE", name="Sickness Rate", domain="People", unit="%", direction="lower", aggregation_method="average", green_threshold=4, amber_threshold=6, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
     dict(code="ATTRITION_RATE", name="Attrition Rate", domain="People", unit="%", direction="lower", aggregation_method="average", green_threshold=26, amber_threshold=32, notes="Example threshold only - replace with agreed Blue Ribbon threshold."),
     dict(code="NPS_SCORE", name="NPS Score", domain="People", unit="score", direction="higher", aggregation_method="average", green_threshold=50, amber_threshold=0, notes="Starter NPS thresholds: Green >= 50; Amber 0 to 49.9; Red < 0. Configurable in KPI Setup."),
+    dict(code="VACANCY_PCT", name="Vacancies %", domain="People", unit="%", direction="lower", aggregation_method="average", green_threshold=5, amber_threshold=10, notes="Service-level vacancy percentage. Starter thresholds: Green <= 5%; Amber > 5% to 10%; Red > 10%. Configurable in KPI Setup."),
     dict(code="OCCUPANCY", name="Occupancy", domain="Operations", unit="%", direction="higher", aggregation_method="none", green_threshold=90, amber_threshold=85, group_only=True, notes="Group-only KPI per email scope."),
     dict(code="HOURS_USAGE", name="Hours Usage", domain="Operations", unit="%", direction="target_range", aggregation_method="average", target_value=100, green_threshold=2, amber_threshold=5, notes="Target 100%. Green within +/-2%; Amber within +/-5%; Red outside +/-5%. Configurable in KPI Setup."),
     dict(code="BUDGET_VARIANCE", name="Budget Over / Underspend", domain="Finance", unit="%", direction="target_range", aggregation_method="average", target_value=0, green_threshold=2, amber_threshold=5, notes="Target 0%. Green within +/-2%; Amber within +/-5%; Red outside +/-5%. Configurable in KPI Setup."),
@@ -127,5 +128,16 @@ def calculate_rag(kpi, numeric_value=None, text_value=None, manual_rag=None):
     return "Unscored"
 
 
+SCORE_MAX = 10.0
+GREEN_SCORE_THRESHOLD = 7.5
+AMBER_SCORE_THRESHOLD = 3.75
+
+
 def rag_score(rag):
-    return {"Green": 3, "Amber": 2, "Red": 1}.get(rag)
+    """Convert RAG performance to the 0-10 weighted score scale.
+
+    Green = 10, Amber = 5 and Red = 0. This is the linear 0-10
+    equivalent of the previous 3/2/1 scale, so historical RAG results
+    retain the same relative weighting and overall classification.
+    """
+    return {"Green": 10.0, "Amber": 5.0, "Red": 0.0}.get(rag)

@@ -27,7 +27,7 @@ from .services.analytics import (
 )
 from .services.exporter import build_board_pack
 from .services.importer import import_workbook
-from .services.scoring import calculate_rag
+from .services.scoring import AMBER_SCORE_THRESHOLD, GREEN_SCORE_THRESHOLD, calculate_rag
 from .services.nps import nps_summary, recalculate_after_response_change
 from .services.sl_aggregation import (
     AGGREGATION_METHODS,
@@ -178,9 +178,9 @@ def _portfolio_score(service_rows):
     if not scores:
         return "Unscored", None
     score = round(sum(scores) / len(scores), 2)
-    if score >= 2.5:
+    if score >= GREEN_SCORE_THRESHOLD:
         rag = "Green"
-    elif score >= 1.75:
+    elif score >= AMBER_SCORE_THRESHOLD:
         rag = "Amber"
     else:
         rag = "Red"

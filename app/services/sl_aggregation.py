@@ -3,7 +3,7 @@ from datetime import datetime
 
 from app.extensions import db
 from app.models import KPIDefinition, KPIResult, SLSubService, SLSubServiceKPIResult
-from app.services.scoring import calculate_rag, rag_score
+from app.services.scoring import AMBER_SCORE_THRESHOLD, GREEN_SCORE_THRESHOLD, calculate_rag, rag_score
 
 
 AGGREGATION_METHODS = {
@@ -188,9 +188,9 @@ def sub_service_rows_for_month(parent_service_id, reporting_month):
         score = round(weighted / weights, 2) if weights else None
         if score is None:
             overall = "Unscored"
-        elif score >= 2.5:
+        elif score >= GREEN_SCORE_THRESHOLD:
             overall = "Green"
-        elif score >= 1.75:
+        elif score >= AMBER_SCORE_THRESHOLD:
             overall = "Amber"
         else:
             overall = "Red"

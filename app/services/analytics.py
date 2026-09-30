@@ -4,7 +4,7 @@ from datetime import date
 from sqlalchemy import func
 
 from app.models import KPIDefinition, KPIResult, Service
-from app.services.scoring import rag_score
+from app.services.scoring import AMBER_SCORE_THRESHOLD, GREEN_SCORE_THRESHOLD, rag_score
 
 
 def latest_month():
@@ -94,9 +94,9 @@ def overall_for_results(results):
         return "Unscored", None
 
     score = weighted_total / weight_total
-    if score >= 2.5:
+    if score >= GREEN_SCORE_THRESHOLD:
         rag = "Green"
-    elif score >= 1.75:
+    elif score >= AMBER_SCORE_THRESHOLD:
         rag = "Amber"
     else:
         rag = "Red"
@@ -180,9 +180,9 @@ def _summary_row(name_key, name, rows):
     avg = round(sum(scored) / len(scored), 2) if scored else None
     if avg is None:
         overall = "Unscored"
-    elif avg >= 2.5:
+    elif avg >= GREEN_SCORE_THRESHOLD:
         overall = "Green"
-    elif avg >= 1.75:
+    elif avg >= AMBER_SCORE_THRESHOLD:
         overall = "Amber"
     else:
         overall = "Red"

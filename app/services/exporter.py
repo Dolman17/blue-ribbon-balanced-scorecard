@@ -163,7 +163,7 @@ def _autosize(ws, max_width=35, min_width=10):
 
 
 def _rag_formula(score_ref):
-    return f'=IF({score_ref}="","Unscored",IF({score_ref}>=2.5,"Green",IF({score_ref}>=1.75,"Amber","Red")))'
+    return f'=IF({score_ref}="","Unscored",IF({score_ref}>=7.5,"Green",IF({score_ref}>=3.75,"Amber","Red")))'
 
 
 def _result_display(result):
@@ -329,9 +329,9 @@ def build_board_pack(reporting_month):
         all_ws.conditional_formatting.add(
             f"E6:E{last_service_row}",
             ColorScaleRule(
-                start_type="num", start_value=1, start_color="F8696B",
-                mid_type="num", mid_value=2, mid_color="FFEB84",
-                end_type="num", end_value=3, end_color="63BE7B",
+                start_type="num", start_value=0, start_color="F8696B",
+                mid_type="num", mid_value=5, mid_color="FFEB84",
+                end_type="num", end_value=10, end_color="63BE7B",
             ),
         )
     _autosize(all_ws, 28)
@@ -360,9 +360,9 @@ def build_board_pack(reporting_month):
     )
     if overall_score is None:
         overall_rag = "Unscored"
-    elif overall_score >= 2.5:
+    elif overall_score >= 7.5:
         overall_rag = "Green"
-    elif overall_score >= 1.75:
+    elif overall_score >= 3.75:
         overall_rag = "Amber"
     else:
         overall_rag = "Red"
@@ -536,7 +536,7 @@ def build_board_pack(reporting_month):
         _zebra(la_ws, 5, 4 + len(local_authority_names), 1, 6)
         la_ws.conditional_formatting.add(
             f"C5:C{4 + len(local_authority_names)}",
-            ColorScaleRule(start_type="num", start_value=1, start_color="F8696B", mid_type="num", mid_value=2, mid_color="FFEB84", end_type="num", end_value=3, end_color="63BE7B"),
+            ColorScaleRule(start_type="num", start_value=0, start_color="F8696B", mid_type="num", mid_value=5, mid_color="FFEB84", end_type="num", end_value=10, end_color="63BE7B"),
         )
     _autosize(la_ws, 32)
     la_ws.freeze_panes = "A5"
@@ -565,7 +565,7 @@ def build_board_pack(reporting_month):
         _zebra(rm_ws, 5, 4 + len(manager_names), 1, 6)
         rm_ws.conditional_formatting.add(
             f"C5:C{4 + len(manager_names)}",
-            ColorScaleRule(start_type="num", start_value=1, start_color="F8696B", mid_type="num", mid_value=2, mid_color="FFEB84", end_type="num", end_value=3, end_color="63BE7B"),
+            ColorScaleRule(start_type="num", start_value=0, start_color="F8696B", mid_type="num", mid_value=5, mid_color="FFEB84", end_type="num", end_value=10, end_color="63BE7B"),
         )
     _autosize(rm_ws, 30)
     rm_ws.freeze_panes = "A5"
@@ -598,7 +598,7 @@ def build_board_pack(reporting_month):
         _zebra(rgm_ws, 5, 4 + len(manager_pairs), 1, 7)
         rgm_ws.conditional_formatting.add(
             f"D5:D{4 + len(manager_pairs)}",
-            ColorScaleRule(start_type="num", start_value=1, start_color="F8696B", mid_type="num", mid_value=2, mid_color="FFEB84", end_type="num", end_value=3, end_color="63BE7B"),
+            ColorScaleRule(start_type="num", start_value=0, start_color="F8696B", mid_type="num", mid_value=5, mid_color="FFEB84", end_type="num", end_value=10, end_color="63BE7B"),
         )
     _autosize(rgm_ws, 30)
     rgm_ws.freeze_panes = "A5"

@@ -210,3 +210,18 @@ The Executive dashboard now includes a **Customise dashboard** button. Each auth
 
 ## Phase 3.25 – Executive Insight Charts
 Added movable Executive dashboard widgets for KPI risk ranking, month-on-month RAG movement, NPS trend with response volume, services improving/deteriorating, and a Service x KPI heatmap. Existing per-user dashboard layout automatically appends the new widgets. Supported Living parent service pages now also include a child-service comparison chart.
+
+## Phase 3.27 - Vacancies % and 0-10 scoring
+
+- Added **Vacancies %** (`VACANCY_PCT`) as a service-level People KPI.
+- Starter vacancy thresholds are configurable in KPI Setup: Green <= 5%, Amber > 5% to 10%, Red > 10%.
+- Vacancy data can be entered through Manual KPI Entry, SL sub-service manual entry, or the monthly Excel import.
+- Changed weighted service/domain/portfolio scoring from the previous 1-3 presentation to a **0-10 scale** while preserving the same RAG weighting logic:
+  - Green = 10 points
+  - Amber = 5 points
+  - Red = 0 points
+  - Overall Green >= 7.5
+  - Overall Amber >= 3.75 and < 7.5
+  - Overall Red < 3.75
+- Executive, Local Authority, Regional Manager, Registered Manager, Supported Living drill-down charts and Excel Board export now display scores out of 10.
+- Existing KPI history does not need to be migrated because overall scores are derived dynamically from stored RAG results.
