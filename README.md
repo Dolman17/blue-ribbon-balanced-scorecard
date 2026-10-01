@@ -231,3 +231,11 @@ Added movable Executive dashboard widgets for KPI risk ranking, month-on-month R
 Registered Manager user accounts can now be assigned to one active service in User Management. The assignment is mandatory when the Registered Manager role is selected.
 
 Access is enforced server-side: a Registered Manager is redirected from the Executive dashboard to their assigned service and can only open that service, its Supported Living sub-services, and the related NPS detail pages. Organisation-wide reports, admin screens, exports, manual entry and other services are blocked. The navigation is simplified to a single **My Service** link for these users.
+
+## Phase 3.30 - Regional Manager region access
+
+Regional Manager user accounts can now be assigned to one Regional Manager portfolio in User Management. The assignment is mandatory when the Regional Manager role is selected.
+
+Access is enforced server-side: a Regional Manager is redirected from the Executive dashboard to their own Regional Manager view and can only open that regional portfolio, the Registered Manager drill-downs within it, the services in that portfolio, Supported Living sub-services, and related NPS detail pages. Other Regional Manager portfolios, Executive/Local Authority views, Board export and admin screens are blocked. The navigation is simplified to a single **My Region** link.
+
+Registered Manager single-service access from Phase 3.29 remains unchanged.

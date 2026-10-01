@@ -87,18 +87,52 @@ def _is_registered_manager_user():
     return current_user.is_authenticated and current_user.role == "Registered Manager"
 
 
+def _is_regional_manager_user():
+    return current_user.is_authenticated and current_user.role == "Regional Manager"
+
+
 def _require_assigned_service_access(service_id):
-    """Enforce single-service access for Registered Manager users."""
-    if not _is_registered_manager_user():
+    """Enforce service-level access for scoped management users."""
+    service = Service.query.get_or_404(service_id)
+
+    if _is_registered_manager_user():
+        if not current_user.service_id:
+            abort(403, description="No service has been assigned to this Registered Manager account.")
+        if int(current_user.service_id) != int(service_id):
+            abort(403, description="You do not have access to this service.")
+
+    if _is_regional_manager_user():
+        if not current_user.regional_manager:
+            abort(403, description="No region has been assigned to this Regional Manager account.")
+        if (service.regional_manager or "").strip() != current_user.regional_manager.strip():
+            abort(403, description="You do not have access to this service because it is outside your assigned region.")
+
+
+def _require_assigned_region_access(manager_name):
+    """Enforce Regional Manager access to only their own named portfolio."""
+    if not _is_regional_manager_user():
         return
-    if not current_user.service_id:
-        abort(403, description="No service has been assigned to this Registered Manager account.")
-    if int(current_user.service_id) != int(service_id):
-        abort(403, description="You do not have access to this service.")
+    if not current_user.regional_manager:
+        abort(403, description="No region has been assigned to this Regional Manager account.")
+    if manager_name.strip() != current_user.regional_manager.strip():
+        abort(403, description="You do not have access to this Regional Manager portfolio.")
 
 
 def _user_form_services():
     return Service.query.filter_by(active=True).order_by(Service.name).all()
+
+
+def _user_form_regional_managers():
+    return [
+        row[0]
+        for row in (
+            db.session.query(Service.regional_manager)
+            .filter(Service.active.is_(True), Service.regional_manager.isnot(None), Service.regional_manager != "")
+            .distinct()
+            .order_by(Service.regional_manager)
+            .all()
+        )
+    ]
 
 
 @bp.before_request
@@ -135,6 +169,30 @@ def require_authentication():
         }
         if request.endpoint not in allowed_endpoints:
             abort(403, description="Your account is restricted to your assigned service.")
+
+    # Regional Managers are restricted to the services in their own Regional
+    # Manager portfolio. They land on their own regional dashboard and cannot
+    # navigate to another Regional Manager, Executive, Local Authority or admin view.
+    if _is_regional_manager_user():
+        if not current_user.regional_manager:
+            if request.endpoint == "main.logout":
+                return None
+            abort(403, description="No region has been assigned to this Regional Manager account. Please contact an administrator.")
+
+        if request.endpoint == "main.dashboard":
+            return redirect(url_for("main.regional_manager_detail", manager_name=current_user.regional_manager))
+
+        allowed_endpoints = {
+            "main.logout",
+            "main.regional_manager_detail",
+            "main.registered_manager_detail",
+            "main.service_detail",
+            "main.service_nps_detail",
+            "main.sl_sub_service_detail",
+            "main.sl_sub_service_nps_detail",
+        }
+        if request.endpoint not in allowed_endpoints:
+            abort(403, description="Your account is restricted to your assigned region.")
 
     return None
 
@@ -487,6 +545,7 @@ def regional_managers():
 
 @bp.route("/regional-manager/<path:manager_name>")
 def regional_manager_detail(manager_name):
+    _require_assigned_region_access(manager_name)
     selected_month = resolve_month(request.args.get("month"))
     months = available_months()
     rows = service_rows_for_month(selected_month, regional_manager=manager_name) if selected_month else []
@@ -508,6 +567,7 @@ def regional_manager_detail(manager_name):
 
 @bp.route("/regional-manager/<path:manager_name>/registered-manager/<path:registered_manager_name>")
 def registered_manager_detail(manager_name, registered_manager_name):
+    _require_assigned_region_access(manager_name)
     selected_month = resolve_month(request.args.get("month"))
     months = available_months()
     rows = service_rows_for_month(
@@ -1317,28 +1377,36 @@ def user_create():
         if role not in USER_ROLES:
             role = "Viewer"
         services = _user_form_services()
+        regional_managers = _user_form_regional_managers()
         service_id = request.form.get("service_id", type=int)
+        regional_manager = (request.form.get("regional_manager") or "").strip() or None
         if role == "Registered Manager":
             if not service_id or not Service.query.filter_by(id=service_id, active=True).first():
                 flash("Registered Manager users must be assigned to one active service.", "danger")
-                return render_template("user_form.html", user=None, roles=USER_ROLES, services=services)
+                return render_template("user_form.html", user=None, roles=USER_ROLES, services=services, regional_managers=regional_managers)
+            regional_manager = None
+        elif role == "Regional Manager":
+            if not regional_manager or regional_manager not in regional_managers:
+                flash("Regional Manager users must be assigned to one active Regional Manager portfolio.", "danger")
+                return render_template("user_form.html", user=None, roles=USER_ROLES, services=services, regional_managers=regional_managers)
+            service_id = None
         else:
             service_id = request.form.get("service_id", type=int)
 
         if len(username) < 3 or len(password) < 10:
             flash("Username must be at least 3 characters and password at least 10 characters.", "danger")
-            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services)
+            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services, regional_managers=regional_managers)
         if User.query.filter(func.lower(User.username) == username.lower()).first():
             flash("That username already exists.", "danger")
-            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services)
+            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services, regional_managers=regional_managers)
         if email and User.query.filter(func.lower(User.email) == email.lower()).first():
             flash("That email address is already in use.", "danger")
-            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services)
+            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services, regional_managers=regional_managers)
         user = User(
             username=username, email=email, role=role, active=request.form.get("active") == "on",
-            regional_manager=None if role == "Registered Manager" else (request.form.get("regional_manager") or "").strip() or None,
-            registered_manager=None if role == "Registered Manager" else (request.form.get("registered_manager") or "").strip() or None,
-            local_authority=None if role == "Registered Manager" else (request.form.get("local_authority") or "").strip() or None,
+            regional_manager=regional_manager,
+            registered_manager=None if role in {"Registered Manager", "Regional Manager"} else (request.form.get("registered_manager") or "").strip() or None,
+            local_authority=None if role in {"Registered Manager", "Regional Manager"} else (request.form.get("local_authority") or "").strip() or None,
             service_id=service_id,
         )
         user.set_password(password)
@@ -1346,7 +1414,7 @@ def user_create():
         db.session.commit()
         flash(f"User {user.username} created.", "success")
         return redirect(url_for("main.user_management"))
-    return render_template("user_form.html", user=None, roles=USER_ROLES, services=_user_form_services())
+    return render_template("user_form.html", user=None, roles=USER_ROLES, services=_user_form_services(), regional_managers=_user_form_regional_managers())
 
 
 @bp.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
@@ -1360,23 +1428,31 @@ def user_edit(user_id):
         if role not in USER_ROLES:
             role = "Viewer"
         services = _user_form_services()
+        regional_managers = _user_form_regional_managers()
         service_id = request.form.get("service_id", type=int)
+        regional_manager = (request.form.get("regional_manager") or "").strip() or None
         if role == "Registered Manager":
             if not service_id or not Service.query.filter_by(id=service_id, active=True).first():
                 flash("Registered Manager users must be assigned to one active service.", "danger")
-                return render_template("user_form.html", user=user, roles=USER_ROLES, services=services)
+                return render_template("user_form.html", user=user, roles=USER_ROLES, services=services, regional_managers=regional_managers)
+            regional_manager = None
+        elif role == "Regional Manager":
+            if not regional_manager or regional_manager not in regional_managers:
+                flash("Regional Manager users must be assigned to one active Regional Manager portfolio.", "danger")
+                return render_template("user_form.html", user=user, roles=USER_ROLES, services=services, regional_managers=regional_managers)
+            service_id = None
 
         duplicate_username = User.query.filter(func.lower(User.username) == username.lower(), User.id != user.id).first()
         duplicate_email = email and User.query.filter(func.lower(User.email) == email.lower(), User.id != user.id).first()
         if duplicate_username or duplicate_email:
             flash("Username or email is already in use.", "danger")
-            return render_template("user_form.html", user=user, roles=USER_ROLES, services=services)
+            return render_template("user_form.html", user=user, roles=USER_ROLES, services=services, regional_managers=regional_managers)
         user.username = username
         user.email = email
         user.role = role
-        user.regional_manager = None if role == "Registered Manager" else (request.form.get("regional_manager") or "").strip() or None
-        user.registered_manager = None if role == "Registered Manager" else (request.form.get("registered_manager") or "").strip() or None
-        user.local_authority = None if role == "Registered Manager" else (request.form.get("local_authority") or "").strip() or None
+        user.regional_manager = regional_manager
+        user.registered_manager = None if role in {"Registered Manager", "Regional Manager"} else (request.form.get("registered_manager") or "").strip() or None
+        user.local_authority = None if role in {"Registered Manager", "Regional Manager"} else (request.form.get("local_authority") or "").strip() or None
         user.service_id = service_id
         if user.id == current_user.id:
             user.active = True
@@ -1386,12 +1462,12 @@ def user_edit(user_id):
         if password:
             if len(password) < 10:
                 flash("New password must be at least 10 characters.", "danger")
-                return render_template("user_form.html", user=user, roles=USER_ROLES, services=services)
+                return render_template("user_form.html", user=user, roles=USER_ROLES, services=services, regional_managers=regional_managers)
             user.set_password(password)
         db.session.commit()
         flash(f"User {user.username} updated.", "success")
         return redirect(url_for("main.user_management"))
-    return render_template("user_form.html", user=user, roles=USER_ROLES, services=_user_form_services())
+    return render_template("user_form.html", user=user, roles=USER_ROLES, services=_user_form_services(), regional_managers=_user_form_regional_managers())
 
 
 @bp.route("/users/<int:user_id>/delete", methods=["POST"])

@@ -24,6 +24,13 @@
       <a class="side-link {% if request.endpoint in ['main.service_detail','main.service_nps_detail','main.sl_sub_service_detail','main.sl_sub_service_nps_detail'] %}active{% endif %}" href="{{ url_for('main.service_detail', service_id=current_user.service_id) }}"><i class="bi bi-house-heart"></i><span>{{ current_user.service.name if current_user.service else 'My Service' }}</span></a>
       {% endif %}
     </nav>
+    {% elif current_user.is_authenticated and current_user.role == 'Regional Manager' %}
+    <div class="nav-section-label">MY REGION</div>
+    <nav class="side-links">
+      {% if current_user.regional_manager %}
+      <a class="side-link {% if request.endpoint in ['main.regional_manager_detail','main.registered_manager_detail','main.service_detail','main.service_nps_detail','main.sl_sub_service_detail','main.sl_sub_service_nps_detail'] %}active{% endif %}" href="{{ url_for('main.regional_manager_detail', manager_name=current_user.regional_manager) }}"><i class="bi bi-diagram-3"></i><span>{{ current_user.regional_manager }}</span></a>
+      {% endif %}
+    </nav>
     {% else %}
     <div class="nav-section-label">REPORTS</div>
     <nav class="side-links">
