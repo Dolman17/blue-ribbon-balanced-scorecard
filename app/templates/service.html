@@ -7,7 +7,7 @@
   <div class="d-flex gap-2 align-items-center">
     {% if service.service_type == 'Supported Living' and current_user.is_admin %}<a class="btn btn-outline-secondary report-btn" href="{{ url_for('main.sl_sub_service_master', service_id=service.id) }}"><i class="bi bi-diagram-3 me-1"></i>Manage SL services</a>{% endif %}
     <a class="btn btn-outline-secondary report-btn" href="{{ url_for('main.service_nps_detail', service_id=service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-chat-square-heart me-1"></i>NPS detail</a>
-    <a class="btn btn-outline-primary report-btn" href="{{ url_for('main.manual_entry', scope='service', service_id=service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-pencil-square me-1"></i>Edit month</a>
+    {% if current_user.is_admin %}<a class="btn btn-outline-primary report-btn" href="{{ url_for('main.manual_entry', scope='service', service_id=service.id, month=selected_month.strftime('%Y-%m') if selected_month else '') }}"><i class="bi bi-pencil-square me-1"></i>Edit month</a>{% endif %}
     {% if months %}<form method="get"><select class="form-select" name="month" onchange="this.form.submit()">{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if selected_month == month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></form>{% endif %}
   </div>
 </div>

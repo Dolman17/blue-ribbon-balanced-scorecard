@@ -83,6 +83,24 @@ def _admin_required():
         abort(403)
 
 
+def _is_registered_manager_user():
+    return current_user.is_authenticated and current_user.role == "Registered Manager"
+
+
+def _require_assigned_service_access(service_id):
+    """Enforce single-service access for Registered Manager users."""
+    if not _is_registered_manager_user():
+        return
+    if not current_user.service_id:
+        abort(403, description="No service has been assigned to this Registered Manager account.")
+    if int(current_user.service_id) != int(service_id):
+        abort(403, description="You do not have access to this service.")
+
+
+def _user_form_services():
+    return Service.query.filter_by(active=True).order_by(Service.name).all()
+
+
 @bp.before_request
 def require_authentication():
     if request.endpoint in {"main.login", "main.setup"}:
@@ -95,6 +113,29 @@ def require_authentication():
         logout_user()
         flash("Your account is inactive.", "warning")
         return redirect(url_for("main.login"))
+
+    # Registered Managers are deliberately restricted to one assigned service.
+    # This is enforced server-side as well as in the navigation, so changing a
+    # URL cannot expose another service or an organisation-wide report.
+    if _is_registered_manager_user():
+        if not current_user.service_id:
+            if request.endpoint == "main.logout":
+                return None
+            abort(403, description="No service has been assigned to this Registered Manager account. Please contact an administrator.")
+
+        if request.endpoint == "main.dashboard":
+            return redirect(url_for("main.service_detail", service_id=current_user.service_id))
+
+        allowed_endpoints = {
+            "main.logout",
+            "main.service_detail",
+            "main.service_nps_detail",
+            "main.sl_sub_service_detail",
+            "main.sl_sub_service_nps_detail",
+        }
+        if request.endpoint not in allowed_endpoints:
+            abort(403, description="Your account is restricted to your assigned service.")
+
     return None
 
 
@@ -576,6 +617,7 @@ def upload():
 
 @bp.route("/service/<int:service_id>")
 def service_detail(service_id):
+    _require_assigned_service_access(service_id)
     service = Service.query.get_or_404(service_id)
     month_arg = request.args.get("month")
     selected_month = date.fromisoformat(month_arg + "-01") if month_arg else latest_month()
@@ -665,6 +707,7 @@ def sl_sub_service_master(service_id):
 def sl_sub_service_detail(sub_service_id):
     child = SLSubService.query.get_or_404(sub_service_id)
     service = child.parent_service
+    _require_assigned_service_access(service.id)
     month_arg = request.args.get("month")
     selected_month = date.fromisoformat(month_arg + "-01") if month_arg else latest_month()
 
@@ -888,6 +931,7 @@ def _save_nps_response_rows(reporting_month, service_id=None, sub_service_id=Non
 
 @bp.route("/service/<int:service_id>/nps", methods=["GET", "POST"])
 def service_nps_detail(service_id):
+    _require_assigned_service_access(service_id)
     service = Service.query.get_or_404(service_id)
     selected_month = _nps_month(request.values.get("month"))
 
@@ -961,6 +1005,7 @@ def service_nps_detail(service_id):
 def sl_sub_service_nps_detail(sub_service_id):
     child = SLSubService.query.get_or_404(sub_service_id)
     service = child.parent_service
+    _require_assigned_service_access(service.id)
     selected_month = _nps_month(request.values.get("month"))
 
     if request.method == "POST":
@@ -1271,28 +1316,37 @@ def user_create():
         password = request.form.get("password") or ""
         if role not in USER_ROLES:
             role = "Viewer"
+        services = _user_form_services()
+        service_id = request.form.get("service_id", type=int)
+        if role == "Registered Manager":
+            if not service_id or not Service.query.filter_by(id=service_id, active=True).first():
+                flash("Registered Manager users must be assigned to one active service.", "danger")
+                return render_template("user_form.html", user=None, roles=USER_ROLES, services=services)
+        else:
+            service_id = request.form.get("service_id", type=int)
+
         if len(username) < 3 or len(password) < 10:
             flash("Username must be at least 3 characters and password at least 10 characters.", "danger")
-            return render_template("user_form.html", user=None, roles=USER_ROLES)
+            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services)
         if User.query.filter(func.lower(User.username) == username.lower()).first():
             flash("That username already exists.", "danger")
-            return render_template("user_form.html", user=None, roles=USER_ROLES)
+            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services)
         if email and User.query.filter(func.lower(User.email) == email.lower()).first():
             flash("That email address is already in use.", "danger")
-            return render_template("user_form.html", user=None, roles=USER_ROLES)
+            return render_template("user_form.html", user=None, roles=USER_ROLES, services=services)
         user = User(
             username=username, email=email, role=role, active=request.form.get("active") == "on",
-            regional_manager=(request.form.get("regional_manager") or "").strip() or None,
-            registered_manager=(request.form.get("registered_manager") or "").strip() or None,
-            local_authority=(request.form.get("local_authority") or "").strip() or None,
-            service_id=request.form.get("service_id", type=int),
+            regional_manager=None if role == "Registered Manager" else (request.form.get("regional_manager") or "").strip() or None,
+            registered_manager=None if role == "Registered Manager" else (request.form.get("registered_manager") or "").strip() or None,
+            local_authority=None if role == "Registered Manager" else (request.form.get("local_authority") or "").strip() or None,
+            service_id=service_id,
         )
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
         flash(f"User {user.username} created.", "success")
         return redirect(url_for("main.user_management"))
-    return render_template("user_form.html", user=None, roles=USER_ROLES)
+    return render_template("user_form.html", user=None, roles=USER_ROLES, services=_user_form_services())
 
 
 @bp.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
@@ -1305,18 +1359,25 @@ def user_edit(user_id):
         role = (request.form.get("role") or user.role).strip()
         if role not in USER_ROLES:
             role = "Viewer"
+        services = _user_form_services()
+        service_id = request.form.get("service_id", type=int)
+        if role == "Registered Manager":
+            if not service_id or not Service.query.filter_by(id=service_id, active=True).first():
+                flash("Registered Manager users must be assigned to one active service.", "danger")
+                return render_template("user_form.html", user=user, roles=USER_ROLES, services=services)
+
         duplicate_username = User.query.filter(func.lower(User.username) == username.lower(), User.id != user.id).first()
         duplicate_email = email and User.query.filter(func.lower(User.email) == email.lower(), User.id != user.id).first()
         if duplicate_username or duplicate_email:
             flash("Username or email is already in use.", "danger")
-            return render_template("user_form.html", user=user, roles=USER_ROLES)
+            return render_template("user_form.html", user=user, roles=USER_ROLES, services=services)
         user.username = username
         user.email = email
         user.role = role
-        user.regional_manager = (request.form.get("regional_manager") or "").strip() or None
-        user.registered_manager = (request.form.get("registered_manager") or "").strip() or None
-        user.local_authority = (request.form.get("local_authority") or "").strip() or None
-        user.service_id = request.form.get("service_id", type=int)
+        user.regional_manager = None if role == "Registered Manager" else (request.form.get("regional_manager") or "").strip() or None
+        user.registered_manager = None if role == "Registered Manager" else (request.form.get("registered_manager") or "").strip() or None
+        user.local_authority = None if role == "Registered Manager" else (request.form.get("local_authority") or "").strip() or None
+        user.service_id = service_id
         if user.id == current_user.id:
             user.active = True
         else:
@@ -1325,12 +1386,12 @@ def user_edit(user_id):
         if password:
             if len(password) < 10:
                 flash("New password must be at least 10 characters.", "danger")
-                return render_template("user_form.html", user=user, roles=USER_ROLES)
+                return render_template("user_form.html", user=user, roles=USER_ROLES, services=services)
             user.set_password(password)
         db.session.commit()
         flash(f"User {user.username} updated.", "success")
         return redirect(url_for("main.user_management"))
-    return render_template("user_form.html", user=user, roles=USER_ROLES)
+    return render_template("user_form.html", user=user, roles=USER_ROLES, services=_user_form_services())
 
 
 @bp.route("/users/<int:user_id>/delete", methods=["POST"])

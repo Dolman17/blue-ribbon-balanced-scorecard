@@ -17,6 +17,14 @@
       <span class="brand-logo-wrap"><img class="brand-logo" src="{{ url_for('static', filename='blue_ribbon_logo.png') }}" alt="Blue Ribbon logo"></span>
       <span class="brand-text"><strong>Blue Ribbon</strong><small>Balanced Scorecard</small></span>
     </a>
+    {% if current_user.is_authenticated and current_user.role == 'Registered Manager' %}
+    <div class="nav-section-label">MY SERVICE</div>
+    <nav class="side-links">
+      {% if current_user.service_id %}
+      <a class="side-link {% if request.endpoint in ['main.service_detail','main.service_nps_detail','main.sl_sub_service_detail','main.sl_sub_service_nps_detail'] %}active{% endif %}" href="{{ url_for('main.service_detail', service_id=current_user.service_id) }}"><i class="bi bi-house-heart"></i><span>{{ current_user.service.name if current_user.service else 'My Service' }}</span></a>
+      {% endif %}
+    </nav>
+    {% else %}
     <div class="nav-section-label">REPORTS</div>
     <nav class="side-links">
       <a class="side-link {% if request.endpoint == 'main.dashboard' %}active{% endif %}" href="{{ url_for('main.dashboard') }}"><i class="bi bi-speedometer2"></i><span>Executive</span></a>
@@ -31,6 +39,7 @@
       <a class="side-link {% if request.endpoint == 'main.kpi_config' %}active{% endif %}" href="{{ url_for('main.kpi_config') }}"><i class="bi bi-sliders"></i><span>KPI Setup</span></a>
       {% if current_user.is_authenticated and current_user.is_admin %}<a class="side-link {% if request.endpoint in ['main.user_management','main.user_create','main.user_edit'] %}active{% endif %}" href="{{ url_for('main.user_management') }}"><i class="bi bi-person-gear"></i><span>Users</span></a>{% endif %}
     </nav>
+    {% endif %}
     <div class="side-footer"><span class="status-dot"></span> Local dashboard</div>
   </aside>
 

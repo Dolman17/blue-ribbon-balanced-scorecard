@@ -1,3 +1,109 @@
 {% extends 'base.html' %}
 {% block title %}{{ 'Edit' if user else 'Add' }} user | Blue Ribbon BSC{% endblock %}
-{% block content %}<div class="d-flex justify-content-between align-items-end mb-4"><div><div class="eyebrow">ADMINISTRATION</div><h1 class="h3 mb-1">{{ 'Edit user' if user else 'Add user' }}</h1><p class="text-secondary mb-0">Authentication is active now; scope fields are stored ready for future portfolio restrictions.</p></div><a class="btn btn-outline-secondary" href="{{ url_for('main.user_management') }}">Back to users</a></div><form method="post"><div class="row g-3"><div class="col-lg-7"><div class="visual-card h-100"><h2 class="h6 mb-3">Account</h2><div class="row g-3"><div class="col-md-6"><label class="form-label">Username</label><input class="form-control" name="username" value="{{ user.username if user else '' }}" required></div><div class="col-md-6"><label class="form-label">Email</label><input class="form-control" type="email" name="email" value="{{ user.email if user and user.email else '' }}"></div><div class="col-md-6"><label class="form-label">Role</label><select class="form-select" name="role">{% for role in roles %}<option value="{{ role }}" {% if user and user.role == role or (not user and role == 'Viewer') %}selected{% endif %}>{{ role }}</option>{% endfor %}</select></div><div class="col-md-6 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="active" id="active" {% if not user or user.active %}checked{% endif %} {% if user and user.id == current_user.id %}disabled{% endif %}><label class="form-check-label" for="active">Active account</label>{% if user and user.id == current_user.id %}<input type="hidden" name="active" value="on">{% endif %}</div></div><div class="col-12"><label class="form-label">{{ 'New password (leave blank to keep current)' if user else 'Password' }}</label><input class="form-control" type="password" name="password" minlength="10" {% if not user %}required{% endif %}><div class="form-text">At least 10 characters.</div></div></div></div></div><div class="col-lg-5"><div class="visual-card h-100"><h2 class="h6 mb-2">Future access scope</h2><p class="small text-secondary">Stored now so we can later restrict Regional/Registered Manager users to their own portfolio.</p><label class="form-label">Regional Manager</label><input class="form-control mb-3" name="regional_manager" value="{{ user.regional_manager if user and user.regional_manager else '' }}"><label class="form-label">Registered Manager</label><input class="form-control mb-3" name="registered_manager" value="{{ user.registered_manager if user and user.registered_manager else '' }}"><label class="form-label">Local Authority</label><input class="form-control mb-3" name="local_authority" value="{{ user.local_authority if user and user.local_authority else '' }}"><label class="form-label">Service ID</label><input class="form-control" type="number" name="service_id" value="{{ user.service_id if user and user.service_id else '' }}"><div class="form-text">Leave scope blank for unrestricted access.</div></div></div></div><div class="mt-3"><button class="btn btn-primary" type="submit">{{ 'Save changes' if user else 'Create user' }}</button></div></form>{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end mb-4">
+  <div>
+    <div class="eyebrow">ADMINISTRATION</div>
+    <h1 class="h3 mb-1">{{ 'Edit user' if user else 'Add user' }}</h1>
+    <p class="text-secondary mb-0">Set the user's role and access scope. Registered Managers must be assigned to one service.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('main.user_management') }}">Back to users</a>
+</div>
+
+<form method="post">
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="visual-card h-100">
+        <h2 class="h6 mb-3">Account</h2>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Username</label>
+            <input class="form-control" name="username" value="{{ user.username if user else '' }}" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Email</label>
+            <input class="form-control" type="email" name="email" value="{{ user.email if user and user.email else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Role</label>
+            <select class="form-select" name="role" id="roleSelect">
+              {% for role in roles %}
+              <option value="{{ role }}" {% if (user and user.role == role) or (not user and role == 'Viewer') %}selected{% endif %}>{{ role }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6 d-flex align-items-end">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" name="active" id="active" {% if not user or user.active %}checked{% endif %} {% if user and user.id == current_user.id %}disabled{% endif %}>
+              <label class="form-check-label" for="active">Active account</label>
+              {% if user and user.id == current_user.id %}<input type="hidden" name="active" value="on">{% endif %}
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ 'New password (leave blank to keep current)' if user else 'Password' }}</label>
+            <input class="form-control" type="password" name="password" minlength="10" {% if not user %}required{% endif %}>
+            <div class="form-text">At least 10 characters.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="visual-card h-100">
+        <h2 class="h6 mb-2">Access scope</h2>
+        <p class="small text-secondary" id="scopeHelp">Registered Manager users are restricted to the single service selected below, including its Supported Living sub-services and NPS detail.</p>
+
+        <div id="registeredManagerScope">
+          <label class="form-label" for="serviceSelect">Assigned service <span class="text-danger">*</span></label>
+          <select class="form-select mb-2" name="service_id" id="serviceSelect">
+            <option value="">Select a service</option>
+            {% for service in services %}
+            <option value="{{ service.id }}" {% if user and user.service_id == service.id %}selected{% endif %}>{{ service.name }}{% if service.service_type %} · {{ service.service_type }}{% endif %}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text mb-3">Required for Registered Manager accounts. They will not be able to access any other service or organisation-wide dashboards.</div>
+        </div>
+
+        <div id="otherScopeFields">
+          <label class="form-label">Regional Manager</label>
+          <input class="form-control mb-3" name="regional_manager" value="{{ user.regional_manager if user and user.regional_manager else '' }}">
+          <label class="form-label">Registered Manager</label>
+          <input class="form-control mb-3" name="registered_manager" value="{{ user.registered_manager if user and user.registered_manager else '' }}">
+          <label class="form-label">Local Authority</label>
+          <input class="form-control" name="local_authority" value="{{ user.local_authority if user and user.local_authority else '' }}">
+          <div class="form-text">These portfolio fields remain available for the other access roles.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <button class="btn btn-primary" type="submit">{{ 'Save changes' if user else 'Create user' }}</button>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const role = document.getElementById('roleSelect');
+  const service = document.getElementById('serviceSelect');
+  const other = document.getElementById('otherScopeFields');
+  const help = document.getElementById('scopeHelp');
+  if (!role || !service) return;
+
+  function updateScope() {
+    const isRegisteredManager = role.value === 'Registered Manager';
+    service.required = isRegisteredManager;
+    if (other) other.classList.toggle('d-none', isRegisteredManager);
+    if (help) {
+      help.textContent = isRegisteredManager
+        ? 'This account will be restricted to one service, including its Supported Living sub-services and NPS detail.'
+        : 'Use the available scope fields for portfolio-based roles. Registered Manager single-service restriction only applies when that role is selected.';
+    }
+  }
+
+  role.addEventListener('change', updateScope);
+  updateScope();
+})();
+</script>
+{% endblock %}

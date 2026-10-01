@@ -225,3 +225,9 @@ Added movable Executive dashboard widgets for KPI risk ranking, month-on-month R
   - Overall Red < 3.75
 - Executive, Local Authority, Regional Manager, Registered Manager, Supported Living drill-down charts and Excel Board export now display scores out of 10.
 - Existing KPI history does not need to be migrated because overall scores are derived dynamically from stored RAG results.
+
+## Phase 3.29 - Registered Manager single-service access
+
+Registered Manager user accounts can now be assigned to one active service in User Management. The assignment is mandatory when the Registered Manager role is selected.
+
+Access is enforced server-side: a Registered Manager is redirected from the Executive dashboard to their assigned service and can only open that service, its Supported Living sub-services, and the related NPS detail pages. Organisation-wide reports, admin screens, exports, manual entry and other services are blocked. The navigation is simplified to a single **My Service** link for these users.
