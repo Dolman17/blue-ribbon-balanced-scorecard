@@ -239,3 +239,16 @@ Regional Manager user accounts can now be assigned to one Regional Manager portf
 Access is enforced server-side: a Regional Manager is redirected from the Executive dashboard to their own Regional Manager view and can only open that regional portfolio, the Registered Manager drill-downs within it, the services in that portfolio, Supported Living sub-services, and related NPS detail pages. Other Regional Manager portfolios, Executive/Local Authority views, Board export and admin screens are blocked. The navigation is simplified to a single **My Region** link.
 
 Registered Manager single-service access from Phase 3.29 remains unchanged.
+
+## Phase 3.31 - Supported Living workbook import
+
+The monthly workbook importer now accepts Supported Living sub-service reference codes directly in the existing `KPI_Data` sheet.
+
+- Top-level service codes continue to work as before (for example `CADE`, `FCG`, `BRSL`).
+- Supported Living child reference codes are detected automatically (for example `BILLB`, `RIVER`, `SYCA`, `GREEN`, `HAWK`).
+- Child KPI rows are stored in `SLSubServiceKPIResult`, not as extra top-level services.
+- After a child-level import, the parent Supported Living service is recalculated automatically using the KPI's configured SL aggregation method.
+- Duplicate or ambiguous child reference codes are rejected with a clear import-log error rather than being guessed.
+- No database migration is required.
+
+Use the existing `KPI_Data` columns. For an SL child row, put the child reference in `Service Code` and keep `Scope` as `Service`.
