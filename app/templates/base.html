@@ -25,6 +25,7 @@
       {% endif %}
       <a class="side-link {% if request.endpoint in ['main.action_list','main.action_create','main.action_detail'] %}active{% endif %}" href="{{ url_for('main.action_list') }}"><i class="bi bi-list-check"></i><span>Improvement Actions</span></a>
       <a class="side-link {% if request.endpoint == 'main.performance_trends' %}active{% endif %}" href="{{ url_for('main.performance_trends') }}"><i class="bi bi-graph-up-arrow"></i><span>Performance Trends</span></a>
+      <a class="side-link {% if request.endpoint == 'main.data_quality' %}active{% endif %}" href="{{ url_for('main.data_quality') }}"><i class="bi bi-clipboard2-check"></i><span>Data Quality</span></a>
     </nav>
     {% elif current_user.is_authenticated and current_user.role == 'Regional Manager' %}
     <div class="nav-section-label">MY REGION</div>
@@ -34,6 +35,7 @@
       {% endif %}
       <a class="side-link {% if request.endpoint in ['main.action_list','main.action_create','main.action_detail'] %}active{% endif %}" href="{{ url_for('main.action_list') }}"><i class="bi bi-list-check"></i><span>Improvement Actions</span></a>
       <a class="side-link {% if request.endpoint == 'main.performance_trends' %}active{% endif %}" href="{{ url_for('main.performance_trends') }}"><i class="bi bi-graph-up-arrow"></i><span>Performance Trends</span></a>
+      <a class="side-link {% if request.endpoint == 'main.data_quality' %}active{% endif %}" href="{{ url_for('main.data_quality') }}"><i class="bi bi-clipboard2-check"></i><span>Data Quality</span></a>
     </nav>
     {% else %}
     <div class="nav-section-label">REPORTS</div>
@@ -43,6 +45,7 @@
       <a class="side-link {% if request.endpoint in ['main.regional_managers','main.regional_manager_detail','main.registered_manager_detail'] %}active{% endif %}" href="{{ url_for('main.regional_managers') }}"><i class="bi bi-people"></i><span>Regional Managers</span></a>
       <a class="side-link {% if request.endpoint in ['main.action_list','main.action_create','main.action_detail'] %}active{% endif %}" href="{{ url_for('main.action_list') }}"><i class="bi bi-list-check"></i><span>Improvement Actions</span></a>
       <a class="side-link {% if request.endpoint == 'main.performance_trends' %}active{% endif %}" href="{{ url_for('main.performance_trends') }}"><i class="bi bi-graph-up-arrow"></i><span>Performance Trends</span></a>
+      <a class="side-link {% if request.endpoint == 'main.data_quality' %}active{% endif %}" href="{{ url_for('main.data_quality') }}"><i class="bi bi-clipboard2-check"></i><span>Data Quality</span></a>
     </nav>
     <div class="nav-section-label mt-4">ADMIN</div>
     <nav class="side-links">
