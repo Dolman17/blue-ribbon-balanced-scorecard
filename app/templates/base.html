@@ -46,6 +46,7 @@
       <a class="side-link {% if request.endpoint in ['main.action_list','main.action_create','main.action_detail'] %}active{% endif %}" href="{{ url_for('main.action_list') }}"><i class="bi bi-list-check"></i><span>Improvement Actions</span></a>
       <a class="side-link {% if request.endpoint == 'main.performance_trends' %}active{% endif %}" href="{{ url_for('main.performance_trends') }}"><i class="bi bi-graph-up-arrow"></i><span>Performance Trends</span></a>
       <a class="side-link {% if request.endpoint == 'main.data_quality' %}active{% endif %}" href="{{ url_for('main.data_quality') }}"><i class="bi bi-clipboard2-check"></i><span>Data Quality</span></a>
+      <a class="side-link {% if request.endpoint in ['main.board_report','main.board_report_pdf'] %}active{% endif %}" href="{{ url_for('main.board_report') }}"><i class="bi bi-file-earmark-bar-graph"></i><span>Board Reporting</span></a>
     </nav>
     <div class="nav-section-label mt-4">ADMIN</div>
     <nav class="side-links">

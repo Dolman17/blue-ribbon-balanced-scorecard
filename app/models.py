@@ -245,3 +245,15 @@ class ImprovementActionEvent(db.Model):
     note = db.Column(db.Text, nullable=False)
     action = db.relationship("ImprovementAction", backref=db.backref("events", lazy="select", order_by="ImprovementActionEvent.occurred_at.desc()"))
     author = db.relationship("User")
+
+
+class BoardReportNarrative(db.Model):
+    """Monthly executive commentary; KPI values remain immutable."""
+    id = db.Column(db.Integer, primary_key=True)
+    reporting_month = db.Column(db.Date, nullable=False, unique=True, index=True)
+    highlights = db.Column(db.Text, nullable=False, default="")
+    concerns = db.Column(db.Text, nullable=False, default="")
+    priorities = db.Column(db.Text, nullable=False, default="")
+    updated_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = db.relationship("User")

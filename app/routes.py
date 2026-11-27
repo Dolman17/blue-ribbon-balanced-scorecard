@@ -14,7 +14,7 @@ from .extensions import db
 from .security import login_throttled, record_failed_login, clear_successful_login
 from .models import (
     ImportLog, KPIDefinition, KPIResult, NPSResponse, Service,
-    SLSubService, SLSubServiceKPIResult, User, ImprovementAction, ImprovementActionEvent,
+    SLSubService, SLSubServiceKPIResult, User, ImprovementAction, ImprovementActionEvent, BoardReportNarrative,
 )
 from .services.analytics import (
     available_months,
@@ -31,6 +31,7 @@ from .services.analytics import (
 )
 from .services.performance_trends import compare_performance
 from .services.data_quality import quality_report
+from .services.board_reporting import build_summary
 from .services.exporter import build_board_pack
 from .services.importer import import_workbook
 from .services.scoring import AMBER_SCORE_THRESHOLD, GREEN_SCORE_THRESHOLD, calculate_rag
@@ -274,6 +275,72 @@ def data_quality():
                            options=filter_options(regional_manager=manager),
                            filters=dict(regional_manager=manager, local_authority=authority,
                                         service_type=service_type))
+
+
+# Phase 3.36: organisation-wide Board reporting; no access for service-scoped roles.
+def _board_reporting_required():
+    if current_user.role not in ("Admin", "Executive", "Viewer"):
+        abort(403)
+
+
+def _board_month():
+    months = available_months()
+    selected = resolve_month(request.values.get("month"))
+    if selected not in months:
+        selected = months[0] if months else None
+    previous = months[months.index(selected)+1] if selected and months.index(selected)+1 < len(months) else None
+    return months, selected, previous
+
+
+@bp.route("/board-report")
+def board_report():
+    _board_reporting_required()
+    months, selected, previous = _board_month()
+    report = build_summary(selected, previous) if selected else None
+    narrative = BoardReportNarrative.query.filter_by(reporting_month=selected).first() if selected else None
+    return render_template("board_report.html", months=months, selected_month=selected,
+                           report=report, narrative=narrative,
+                           can_edit=current_user.role in ("Admin", "Executive"))
+
+
+@bp.route("/board-report/commentary", methods=["POST"])
+def save_board_commentary():
+    _board_reporting_required()
+    if current_user.role not in ("Admin", "Executive"):
+        abort(403)
+    months, selected, _ = _board_month()
+    if not selected:
+        abort(400)
+    values = {}
+    for field in ("highlights", "concerns", "priorities"):
+        value = (request.form.get(field) or "").strip()
+        if len(value) > 4000:
+            abort(400, description="Each commentary field must be 4,000 characters or fewer.")
+        values[field] = value
+    narrative = BoardReportNarrative.query.filter_by(reporting_month=selected).first()
+    if narrative is None:
+        narrative = BoardReportNarrative(reporting_month=selected)
+        db.session.add(narrative)
+    for field, value in values.items():
+        setattr(narrative, field, value)
+    narrative.updated_by_id = current_user.id
+    db.session.commit()
+    flash("Board commentary saved for " + selected.strftime("%B %Y") + ".", "success")
+    return redirect(url_for("main.board_report", month=selected.strftime("%Y-%m")))
+
+
+@bp.route("/board-report/pdf")
+def board_report_pdf():
+    _board_reporting_required()
+    _, selected, previous = _board_month()
+    if not selected:
+        abort(404, description="No reporting data available.")
+    from .services.board_pdf import make_pdf
+    report = build_summary(selected, previous)
+    narrative = BoardReportNarrative.query.filter_by(reporting_month=selected).first()
+    pdf = make_pdf(report, narrative)
+    return send_file(pdf, mimetype="application/pdf", as_attachment=True,
+                     download_name=f"Blue_Ribbon_Board_Report_{selected.strftime('%Y_%m')}.pdf")
 
 
 @bp.route("/setup", methods=["GET", "POST"])

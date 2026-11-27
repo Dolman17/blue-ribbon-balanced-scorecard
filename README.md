@@ -264,3 +264,10 @@ Read-only historical comparison page at `/performance-trends` with monthly servi
 ## Phase 3.35 — Data Quality & Scoring Assurance
 
 Open **Data Quality** from the side navigation for read-only completeness, low-sample NPS, negative vacancy and SL roll-up coverage warnings. See `PHASE_3_35_DEPLOYMENT.md`.
+
+
+## Phase 3.36 – Automated Board Reporting
+
+Open **Board Reporting** for a month-selectable executive report combining existing service scores, RAG movements, ranked changes, data-quality exceptions and improvement actions. Admin and Executive roles can save separate commentary for each reporting month. All unscoped users can read and download the PDF; Registered and Regional Manager accounts cannot access the organisation-wide report. The PDF is generated from live data and carries a generation date.
+
+The new `board_report_narrative` table is added by the existing app startup `db.create_all()` path; there are no changes to KPI result tables or scoring. `reportlab` was added to `requirements.txt` for the PDF export. See `PHASE_3_36_DEPLOYMENT.md` for testing and deployment steps.

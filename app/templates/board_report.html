@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Board Reporting | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div><div class="eyebrow">EXECUTIVE INTELLIGENCE</div><h1 class="h3 mb-1">Monthly Board Performance Report</h1>
+  <p class="text-secondary mb-0">Review portfolio results, priority exceptions and improvement actions before exporting to PDF.</p></div>
+  {% if selected_month %}<a class="btn btn-primary" href="{{ url_for('main.board_report_pdf', month=selected_month.strftime('%Y-%m')) }}"><i class="bi bi-file-earmark-pdf me-1"></i> Download Board PDF</a>{% endif %}
+</div>
+<form method="get" class="card card-panel mb-4"><div class="card-body d-flex align-items-end gap-3 flex-wrap">
+  <div style="min-width:240px"><label class="form-label" for="board-month">Reporting month</label>
+    <select class="form-select" name="month" id="board-month">{% for m in months %}<option value="{{ m.strftime('%Y-%m') }}" {% if m == selected_month %}selected{% endif %}>{{ m.strftime('%B %Y') }}</option>{% endfor %}</select></div>
+  <button class="btn btn-primary" type="submit">Generate report</button>
+</div></form>
+{% if report %}
+<div class="alert alert-info small">This report uses existing scoring rules. Data-quality checks are advisory. Action statuses reflect the <strong>current tracker status</strong>, even for historical reporting months; they are not historical snapshots.</div>
+<div class="row g-3 mb-4">
+  {% for heading, value in [('Average service score', ('%.2f'|format(report.score) ~ ' / 10') if report.score is not none else 'N/A'), ('Scored services', report.scored_services), ('Green', report.rag_counts.Green), ('Amber', report.rag_counts.Amber), ('Red', report.rag_counts.Red), ('Data coverage', (report.coverage|string ~ '%') if report.coverage is not none else 'N/A')] %}
+  <div class="col-6 col-lg-2"><div class="card card-panel h-100"><div class="card-body"><div class="small text-secondary">{{ heading }}</div><div class="h4 fw-bold mt-1 mb-0">{{ value }}</div></div></div></div>
+  {% endfor %}
+</div>
+<div class="row g-4 mb-4">
+  <div class="col-xl-7"><div class="card card-panel h-100"><div class="card-body"><h2 class="h5">Month-on-month performance</h2>
+    <p class="small text-secondary">Compared with {{ report.previous_month.strftime('%B %Y') if report.previous_month else 'no earlier month' }}. Only like-for-like scored services contribute to movements.</p>
+    <div class="row g-2 mb-3"><div class="col-4"><strong class="text-success">{{ report.movement.improving }}</strong><div class="small">Improving</div></div><div class="col-4"><strong class="text-danger">{{ report.movement.declining }}</strong><div class="small">Declining</div></div><div class="col-4"><strong>{{ report.movement.unchanged }}</strong><div class="small">Unchanged</div></div></div>
+    <h3 class="h6">Largest improvements</h3><ul class="list-group list-group-flush mb-3">{% for r in report.best %}<li class="list-group-item d-flex justify-content-between px-0"><span>{{ r.service.name }}</span><strong class="text-success">{{ '%+.2f'|format(r.delta) }}</strong></li>{% else %}<li class="list-group-item px-0 text-secondary">No comparable improvements</li>{% endfor %}</ul>
+    <h3 class="h6">Largest deteriorations</h3><ul class="list-group list-group-flush">{% for r in report.worst %}<li class="list-group-item d-flex justify-content-between px-0"><span>{{ r.service.name }}</span><strong class="text-danger">{{ '%+.2f'|format(r.delta) }}</strong></li>{% else %}<li class="list-group-item px-0 text-secondary">No comparable deterioration</li>{% endfor %}</ul>
+    <div class="mt-3 small"><a href="{{ url_for('main.performance_trends',month=selected_month.strftime('%Y-%m')) }}">View detailed Performance Trends</a></div>
+  </div></div></div>
+  <div class="col-xl-5"><div class="card card-panel h-100"><div class="card-body"><h2 class="h5">Data quality</h2>
+    <p><strong>{{ report.quality.totals.present }}</strong> recorded of <strong>{{ report.quality.totals.expected }}</strong> expected KPI cells.</p>
+    <div class="small mb-3">Missing: {{ report.quality.totals.missing }} · Blank: {{ report.quality.totals.blank }} · N/A: {{ report.quality.totals.na }} · Advisory flags: {{ report.quality.flags|length }}</div>
+    <h3 class="h6">Validation exceptions</h3><ul class="list-group list-group-flush">{% for f in report.quality.flags[:8] %}<li class="list-group-item px-0"><strong>{{ f.service }}</strong> · {{ f.kind }}<div class="text-secondary small">{{ f.detail }}</div></li>{% else %}<li class="list-group-item px-0 text-secondary">No advisory exceptions</li>{% endfor %}</ul>
+    {% if report.quality.flags|length > 8 %}<div class="small text-secondary mt-2">Showing 8 of {{ report.quality.flags|length }} warnings.</div>{% endif %}
+    <div class="mt-3 small"><a href="{{ url_for('main.data_quality',month=selected_month.strftime('%Y-%m')) }}">Open full Data Quality report</a></div>
+  </div></div></div>
+</div>
+<div class="card card-panel mb-4"><div class="card-body"><h2 class="h5">KPI RAG changes</h2><p class="small text-secondary">Comparable KPI results in the selected and previous reporting months.</p>
+<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>Service</th><th>KPI</th><th>Previous</th><th>Current</th><th>Direction</th></tr></thead><tbody>
+{% for t in report.movement.transitions[:16] %}<tr><td>{{ t.service.name }}</td><td>{{ t.kpi.name }}</td><td>{{ t.previous }}</td><td>{{ t.current }}</td><td><span class="fw-semibold text-{{ 'success' if t.direction == 'Improved' else 'danger' }}">{{ t.direction }}</span></td></tr>
+{% else %}<tr><td colspan="5" class="text-secondary">No comparable KPI RAG movements.</td></tr>{% endfor %}
+</tbody></table></div>{% if report.movement.transitions|length > 16 %}<p class="small text-secondary">Showing the first 16 of {{ report.movement.transitions|length }} movements.</p>{% endif %}
+</div></div>
+<div class="card card-panel mb-4"><div class="card-body"><h2 class="h5">Improvement actions linked to {{ selected_month.strftime('%B %Y') }}</h2>
+<div class="row g-3 mb-3"><div class="col-auto"><strong>{{ report.actions|length }}</strong> total</div><div class="col-auto"><strong>{{ report.open_actions|length }}</strong> outstanding</div><div class="col-auto"><strong class="text-danger">{{ report.overdue|length }}</strong> overdue today</div></div>
+<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>Service</th><th>Action</th><th>Owner</th><th>Due</th><th>Status</th></tr></thead><tbody>
+{% for a in report.actions[:25] %}<tr><td>{{ a.service.name }}</td><td><a href="{{ url_for('main.action_detail',action_id=a.id) }}">{{ a.title }}</a></td><td>{{ a.owner }}</td><td>{{ a.due_date.strftime('%d %b %Y') }}</td><td>{{ a.status }}</td></tr>
+{% else %}<tr><td colspan="5" class="text-secondary">No actions linked to the selected reporting month.</td></tr>{% endfor %}
+</tbody></table></div>{% if report.actions|length > 25 %}<p class="small text-secondary">Showing 25 of {{ report.actions|length }} actions.</p>{% endif %}</div></div>
+<div class="card card-panel mb-4"><div class="card-body"><h2 class="h5">Executive commentary</h2>
+<p class="small text-secondary">Saved per reporting month and included in the PDF. Only Admin and Executive users can change the commentary.</p>
+{% if can_edit %}<form method="post" action="{{ url_for('main.save_board_commentary') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="month" value="{{ selected_month.strftime('%Y-%m') }}">
+{% for key, label in [('highlights', 'Key achievements and highlights'), ('concerns', 'Principal concerns and risks'), ('priorities', 'Next-month priorities and required decisions')] %}
+<div class="mb-3"><label class="form-label fw-semibold" for="board-{{ key }}">{{ label }}</label><textarea class="form-control" name="{{ key }}" id="board-{{ key }}" rows="4" maxlength="4000">{{ (narrative|attr(key)) if narrative else '' }}</textarea></div>{% endfor %}
+<button class="btn btn-primary" type="submit">Save commentary</button></form>
+{% else %}{% for key, label in [('highlights','Highlights'),('concerns','Concerns'),('priorities','Priorities')] %}<h3 class="h6 mt-3">{{ label }}</h3><p style="white-space:pre-wrap">{{ (narrative|attr(key)) if narrative else 'No commentary recorded.' }}</p>{% endfor %}{% endif %}
+</div></div>
+{% else %}<div class="alert alert-info">No KPI reporting months are available. Import data to generate a Board report.</div>{% endif %}
+{% endblock %}
