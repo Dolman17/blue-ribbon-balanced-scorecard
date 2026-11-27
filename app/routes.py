@@ -329,18 +329,20 @@ def save_board_commentary():
     return redirect(url_for("main.board_report", month=selected.strftime("%Y-%m")))
 
 
-@bp.route("/board-report/pdf")
-def board_report_pdf():
+@bp.route("/board-report/pptx")
+def board_report_pptx():
     _board_reporting_required()
     _, selected, previous = _board_month()
     if not selected:
         abort(404, description="No reporting data available.")
-    from .services.board_pdf import make_pdf
+    from .services.board_pptx import make_pptx
     report = build_summary(selected, previous)
     narrative = BoardReportNarrative.query.filter_by(reporting_month=selected).first()
-    pdf = make_pdf(report, narrative)
-    return send_file(pdf, mimetype="application/pdf", as_attachment=True,
-                     download_name=f"Blue_Ribbon_Board_Report_{selected.strftime('%Y_%m')}.pdf")
+    presentation = make_pptx(report, narrative)
+    return send_file(presentation,
+                     mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                     as_attachment=True,
+                     download_name=f"Blue_Ribbon_Board_Report_{selected.strftime('%Y_%m')}.pptx")
 
 
 @bp.route("/setup", methods=["GET", "POST"])

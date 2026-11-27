@@ -271,3 +271,7 @@ Open **Data Quality** from the side navigation for read-only completeness, low-s
 Open **Board Reporting** for a month-selectable executive report combining existing service scores, RAG movements, ranked changes, data-quality exceptions and improvement actions. Admin and Executive roles can save separate commentary for each reporting month. All unscoped users can read and download the PDF; Registered and Regional Manager accounts cannot access the organisation-wide report. The PDF is generated from live data and carries a generation date.
 
 The new `board_report_narrative` table is added by the existing app startup `db.create_all()` path; there are no changes to KPI result tables or scoring. `reportlab` was added to `requirements.txt` for the PDF export. See `PHASE_3_36_DEPLOYMENT.md` for testing and deployment steps.
+
+
+## Phase 3.36 PowerPoint export
+The Board Reporting page exports a six-slide editable PowerPoint deck styled after the Blue Ribbon safeguarding overview template. See `PHASE_3_36_PPTX_EXPORT.md`.

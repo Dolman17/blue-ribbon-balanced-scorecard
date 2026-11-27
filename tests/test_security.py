@@ -407,7 +407,7 @@ def test_board_reporting_summary_and_saved_commentary(client, app):
     assert b"Recruitment improved" in page.data
 
 
-def test_board_pdf_and_commentary_escaping(client, app):
+def test_board_pptx_and_commentary_escaping(client, app):
     provision_admin(client)
     _create_red_kpi_result(app)
     t = token(client, "/board-report?month=2026-10")
@@ -418,11 +418,18 @@ def test_board_pdf_and_commentary_escaping(client, app):
     assert response.status_code == 302
     page = client.get("/board-report?month=2026-10")
     assert b"&lt;script&gt;" in page.data
-    response = client.get("/board-report/pdf?month=2026-10")
+    response = client.get("/board-report/pptx?month=2026-10")
     assert response.status_code == 200
-    assert response.mimetype == "application/pdf"
-    assert response.data.startswith(b"%PDF-")
+    assert response.mimetype == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    assert response.data.startswith(b"PK")
     assert len(response.data) > 1000
+    from pptx import Presentation
+    from io import BytesIO
+    prs = Presentation(BytesIO(response.data))
+    assert len(prs.slides) == 6
+    text = " ".join(shape.text for slide in prs.slides for shape in slide.shapes if shape.has_text_frame)
+    assert "Board Performance Overview" in text
+    assert "<script>alert('x')</script>" in text
 
 
 def test_board_reporting_is_restricted_to_portfolio_roles(client, app):
@@ -444,7 +451,7 @@ def test_board_reporting_is_restricted_to_portfolio_roles(client, app):
                                     "password": "very-long-test-passphrase"})
         status = 403 if username == "board-scoped-manager" else 200
         assert client.get("/board-report?month=2026-10").status_code == status
-        assert client.get("/board-report/pdf?month=2026-10").status_code == status
+        assert client.get("/board-report/pptx?month=2026-10").status_code == status
         t = token(client, "/board-report?month=2026-10") if status == 200 else token(client, "/service/" + str(service_id))
         assert client.post("/board-report/commentary", data={
             "csrf_token": t, "month": "2026-10", "highlights": "Not permitted",
