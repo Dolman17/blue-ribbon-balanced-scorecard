@@ -256,3 +256,7 @@ Use the existing `KPI_Data` columns. For an SL child row, put the child referenc
 ## Phase 3.33 – Improvement Action Tracker
 
 New `/actions` dashboard for owner-assigned, deadline-driven improvements linked to Red/Amber KPI results, including Supported Living child KPIs. Role-scoped access, CSRF protection, action status history, evidence links and additional audit logging are included. See `PHASE_3_33_DEPLOYMENT.md` for deployment checks and database considerations.
+
+## Phase 3.34 – Performance Trends
+
+Read-only historical comparison page at `/performance-trends` with monthly service score changes, KPI RAG transitions, service rankings and permission-scoped filters. See `PHASE_3_34_DEPLOYMENT.md`.

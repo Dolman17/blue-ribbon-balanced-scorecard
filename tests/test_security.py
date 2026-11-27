@@ -224,3 +224,67 @@ def test_registered_manager_improvement_actions_are_scoped(client, app):
         "owner": "Test", "due_date": "2026-12-31", "priority": "High",
     })
     assert response.status_code == 400
+
+
+def test_performance_trends_comparison_excludes_unmatched_kpis(client, app):
+    from datetime import date
+    from app.models import Service, KPIDefinition
+    from app.services.performance_trends import compare_performance
+    provision_admin(client)
+    with app.app_context():
+        service = Service(code='TREND_A', name='Trend Test Site', regional_manager='Region A', active=True)
+        db.session.add(service)
+        db.session.flush()
+        metric = KPIDefinition(code='TREND_METRIC', name='Monthly trend metric', domain='Quality', active=True)
+        unmatched = KPIDefinition(code='TREND_NEW', name='New metric', domain='Quality', active=True)
+        db.session.add_all([metric, unmatched])
+        db.session.flush()
+        db.session.add_all([
+            KPIResult(reporting_month=date(2026, 9, 1), scope='service', service_id=service.id, kpi_id=metric.id, rag='Red'),
+            KPIResult(reporting_month=date(2026, 10, 1), scope='service', service_id=service.id, kpi_id=metric.id, rag='Green'),
+            KPIResult(reporting_month=date(2026, 10, 1), scope='service', service_id=service.id, kpi_id=unmatched.id, rag='Amber'),
+        ])
+        db.session.commit()
+        report = compare_performance(date(2026, 10, 1), date(2026, 9, 1))
+        assert report['comparable'] == 1
+        assert report['improving'] == 1
+        assert len(report['transitions']) == 1
+        assert report['transitions'][0]['direction'] == 'Improved'
+    response = client.get('/performance-trends?month=2026-10')
+    assert response.status_code == 200
+    assert b'Trend Test Site' in response.data
+    assert b'Monthly trend metric' in response.data
+
+
+def test_performance_trends_restricts_registered_manager_and_region(client, app):
+    from datetime import date
+    from app.models import Service, KPIDefinition, User
+    provision_admin(client)
+    with app.app_context():
+        a = Service(code='T_SCOPE_A', name='Scoped Trend A', regional_manager='Region A', active=True)
+        b = Service(code='T_SCOPE_B', name='Scoped Trend B', regional_manager='Region B', active=True)
+        db.session.add_all([a, b])
+        db.session.flush()
+        kpi = KPIDefinition(code='SCOPE_TREND', name='Scoped KPI', domain='Quality', active=True)
+        db.session.add(kpi)
+        db.session.flush()
+        for item in (a, b):
+            db.session.add(KPIResult(reporting_month=date(2026, 10, 1), scope='service',
+                                     service_id=item.id, kpi_id=kpi.id, rag='Amber'))
+        manager = User(username='trend-site-manager', role='Registered Manager', active=True, service_id=a.id)
+        manager.set_password('very-long-test-passphrase')
+        regional = User(username='trend-regional-manager', role='Regional Manager', active=True, regional_manager='Region B')
+        regional.set_password('very-long-test-passphrase')
+        db.session.add_all([manager, regional]); db.session.commit()
+    t = token(client, '/'); client.post('/logout', data={'csrf_token': t})
+    for username, visible, hidden in [('trend-site-manager', b'Scoped Trend A', b'Scoped Trend B'),
+                                       ('trend-regional-manager', b'Scoped Trend B', b'Scoped Trend A')]:
+        t = token(client, '/login')
+        client.post('/login', data={'csrf_token': t, 'identity': username,
+                                    'password': 'very-long-test-passphrase'})
+        response = client.get('/performance-trends?month=2026-10&regional_manager=Region%20A')
+        assert response.status_code == 200
+        assert visible in response.data
+        assert hidden not in response.data
+        t = token(client, '/performance-trends')
+        client.post('/logout', data={'csrf_token': t})

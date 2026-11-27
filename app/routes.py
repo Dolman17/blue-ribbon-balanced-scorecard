@@ -29,6 +29,7 @@ from .services.analytics import (
     service_numeric_trends,
     service_rows_for_month,
 )
+from .services.performance_trends import compare_performance
 from .services.exporter import build_board_pack
 from .services.importer import import_workbook
 from .services.scoring import AMBER_SCORE_THRESHOLD, GREEN_SCORE_THRESHOLD, calculate_rag
@@ -171,7 +172,7 @@ def require_authentication():
             "main.service_nps_detail",
             "main.sl_sub_service_detail",
             "main.sl_sub_service_nps_detail",
-            "main.action_list", "main.action_detail", "main.action_create", "main.action_update",
+            "main.action_list", "main.action_detail", "main.action_create", "main.action_update", "main.performance_trends",
         }
         if request.endpoint not in allowed_endpoints:
             abort(403, description="Your account is restricted to your assigned service.")
@@ -196,12 +197,50 @@ def require_authentication():
             "main.service_nps_detail",
             "main.sl_sub_service_detail",
             "main.sl_sub_service_nps_detail",
-            "main.action_list", "main.action_detail", "main.action_create", "main.action_update",
+            "main.action_list", "main.action_detail", "main.action_create", "main.action_update", "main.performance_trends",
         }
         if request.endpoint not in allowed_endpoints:
             abort(403, description="Your account is restricted to your assigned region.")
 
     return None
+
+
+@bp.route("/performance-trends")
+def performance_trends():
+    """Role-scoped historical view; read only and no schema changes."""
+    months = available_months()
+    selected = resolve_month(request.args.get("month"))
+    if selected not in months:
+        selected = months[0] if months else None
+    previous = months[months.index(selected) + 1] if selected and months.index(selected) + 1 < len(months) else None
+
+    service_ids = None
+    region = None
+    if _is_registered_manager_user():
+        service_ids = [current_user.service_id]
+    elif _is_regional_manager_user():
+        region = current_user.regional_manager
+
+    authority = (request.args.get("local_authority") or "").strip() if service_ids is None and region is None else None
+    service_type = (request.args.get("service_type") or "").strip() if service_ids is None and region is None else None
+    manager = (request.args.get("regional_manager") or "").strip() if service_ids is None and region is None else region
+    options = filter_options(regional_manager=manager)
+    report = compare_performance(selected, previous, service_ids=service_ids, regional_manager=manager,
+                                 local_authority=authority, service_type=service_type) if selected else None
+    # Historical portfolio trend uses the same permission boundary and selected filters.
+    history = []
+    if selected:
+        for month in reversed([m for m in months if m <= selected][:12]):
+            historical = compare_performance(month, None, service_ids=service_ids,
+                                             regional_manager=manager, local_authority=authority,
+                                             service_type=service_type)
+            scores = [r["current"] for r in historical["rows"] if r["current"] is not None]
+            history.append({"month": month, "score": round(sum(scores) / len(scores), 2) if scores else None,
+                            "count": len(scores)})
+    return render_template("performance_trends.html", months=months, selected_month=selected,
+                           previous_month=previous, report=report, options=options, history=history,
+                           filters=dict(local_authority=authority, service_type=service_type,
+                                        regional_manager=manager), scoped=service_ids is not None or region is not None)
 
 
 @bp.route("/setup", methods=["GET", "POST"])
