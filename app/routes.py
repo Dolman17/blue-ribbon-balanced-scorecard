@@ -4,7 +4,7 @@ from datetime import date, datetime
 from io import BytesIO
 import hmac
 import logging
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlparse
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from sqlalchemy import func, or_
@@ -14,7 +14,7 @@ from .extensions import db
 from .security import login_throttled, record_failed_login, clear_successful_login
 from .models import (
     ImportLog, KPIDefinition, KPIResult, NPSResponse, Service,
-    SLSubService, SLSubServiceKPIResult, User,
+    SLSubService, SLSubServiceKPIResult, User, ImprovementAction, ImprovementActionEvent,
 )
 from .services.analytics import (
     available_months,
@@ -171,6 +171,7 @@ def require_authentication():
             "main.service_nps_detail",
             "main.sl_sub_service_detail",
             "main.sl_sub_service_nps_detail",
+            "main.action_list", "main.action_detail", "main.action_create", "main.action_update",
         }
         if request.endpoint not in allowed_endpoints:
             abort(403, description="Your account is restricted to your assigned service.")
@@ -195,6 +196,7 @@ def require_authentication():
             "main.service_nps_detail",
             "main.sl_sub_service_detail",
             "main.sl_sub_service_nps_detail",
+            "main.action_list", "main.action_detail", "main.action_create", "main.action_update",
         }
         if request.endpoint not in allowed_endpoints:
             abort(403, description="Your account is restricted to your assigned region.")
@@ -1523,3 +1525,169 @@ def export_board():
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+# Phase 3.33 - Improvement Action Tracker
+ACTION_STATUSES = ("Open", "In progress", "Awaiting evidence", "Completed", "Cancelled")
+ACTION_PRIORITIES = ("High", "Medium", "Low")
+ACTION_EDIT_ROLES = ("Admin", "Executive", "Regional Manager", "Registered Manager")
+
+
+def _action_can_edit(action=None):
+    if current_user.role not in ACTION_EDIT_ROLES:
+        abort(403, description="Your role does not permit improvement action updates.")
+    if action is not None:
+        _require_assigned_service_access(action.service_id)
+
+
+def _visible_action_query():
+    query = ImprovementAction.query.join(Service, ImprovementAction.service_id == Service.id)
+    if _is_registered_manager_user():
+        query = query.filter(ImprovementAction.service_id == current_user.service_id)
+    elif _is_regional_manager_user():
+        query = query.filter(Service.regional_manager == current_user.regional_manager)
+    return query
+
+
+def _safe_evidence_url(raw):
+    url = (raw or "").strip()
+    if not url:
+        return None
+    if len(url) > 1000 or any(ord(ch) < 32 for ch in url):
+        raise ValueError("Evidence URL is invalid or too long.")
+    parsed = urlparse(url)
+    if parsed.scheme not in ("https", "http") or not parsed.netloc or parsed.username or parsed.password:
+        raise ValueError("Evidence URL must be an http(s) link without embedded credentials.")
+    return url
+
+
+def _action_source_options(month):
+    """Available Red/Amber rows only; each option has a stable result identifier."""
+    candidates = []
+    query = (KPIResult.query.join(Service, KPIResult.service_id == Service.id)
+             .filter(KPIResult.reporting_month == month, KPIResult.scope == "service",
+                     KPIResult.rag.in_(("Red", "Amber"))))
+    if _is_registered_manager_user():
+        query = query.filter(Service.id == current_user.service_id)
+    elif _is_regional_manager_user():
+        query = query.filter(Service.regional_manager == current_user.regional_manager)
+    for result in query.all():
+        candidates.append((f"service:{result.id}", f"{result.service.name} | {result.kpi.name} ({result.rag})"))
+    child_q = (SLSubServiceKPIResult.query.join(SLSubService).join(Service, SLSubService.parent_service_id == Service.id)
+               .filter(SLSubServiceKPIResult.reporting_month == month,
+                       SLSubServiceKPIResult.rag.in_(("Red", "Amber"))))
+    if _is_registered_manager_user():
+        child_q = child_q.filter(Service.id == current_user.service_id)
+    elif _is_regional_manager_user():
+        child_q = child_q.filter(Service.regional_manager == current_user.regional_manager)
+    for result in child_q.all():
+        candidates.append((f"sl:{result.id}", f"{result.sub_service.parent_service.name} / {result.sub_service.name} | {result.kpi.name} ({result.rag})"))
+    return sorted(candidates, key=lambda item: item[1].lower())
+
+
+@bp.route("/actions")
+def action_list():
+    status = (request.args.get("status") or "").strip()
+    if status not in ACTION_STATUSES:
+        status = ""
+    query = _visible_action_query()
+    if status:
+        query = query.filter(ImprovementAction.status == status)
+    actions = query.order_by(ImprovementAction.due_date.asc(), ImprovementAction.id.desc()).limit(500).all()
+    return render_template("actions.html", actions=actions, status=status,
+                           statuses=ACTION_STATUSES, today=date.today(),
+                           can_edit=current_user.role in ACTION_EDIT_ROLES)
+
+
+@bp.route("/actions/new", methods=["GET", "POST"])
+def action_create():
+    _action_can_edit()
+    try:
+        month = _parse_manual_month(request.values.get("month")) if request.values.get("month") else latest_month()
+    except ValueError:
+        abort(400, description="Invalid reporting month.")
+    if not month:
+        flash("Import or enter KPI results before creating an improvement action.", "warning")
+        return redirect(url_for("main.action_list"))
+    options = _action_source_options(month)
+    if request.method == "POST":
+        source = (request.form.get("source_ref") or "").strip()
+        if source not in dict(options):
+            abort(400, description="Select an available Red or Amber KPI result.")
+        kind, ref = source.split(":", 1)
+        if kind == "service":
+            result = KPIResult.query.get_or_404(int(ref))
+            service_id, sub_service_id = result.service_id, None
+        else:
+            result = SLSubServiceKPIResult.query.get_or_404(int(ref))
+            service_id, sub_service_id = result.sub_service.parent_service_id, result.sub_service_id
+        _require_assigned_service_access(service_id)
+        title = (request.form.get("title") or "").strip()
+        description = (request.form.get("description") or "").strip()
+        owner = (request.form.get("owner") or "").strip()
+        priority = (request.form.get("priority") or "Medium").strip()
+        try:
+            due_date = date.fromisoformat(request.form.get("due_date") or "")
+            evidence_url = _safe_evidence_url(request.form.get("evidence_url"))
+        except ValueError:
+            flash("Provide a valid deadline and an optional http(s) evidence link.", "danger")
+            return render_template("action_form.html", options=options, month=month,
+                                   selected_source=source, priorities=ACTION_PRIORITIES)
+        if not 5 <= len(title) <= 180 or not 10 <= len(description) <= 10000 or not 2 <= len(owner) <= 150 or priority not in ACTION_PRIORITIES:
+            flash("Enter a title (5–180 characters), description (10–10,000 characters), owner and valid priority.", "danger")
+            return render_template("action_form.html", options=options, month=month,
+                                   selected_source=source, priorities=ACTION_PRIORITIES)
+        action = ImprovementAction(service_id=service_id, sub_service_id=sub_service_id,
+            kpi_id=result.kpi_id, reporting_month=result.reporting_month, source_rag=result.rag,
+            title=title, description=description, owner=owner, due_date=due_date,
+            evidence_url=evidence_url, priority=priority, created_by_id=current_user.id)
+        db.session.add(action)
+        db.session.flush()
+        db.session.add(ImprovementActionEvent(action_id=action.id, author_id=current_user.id,
+            new_status="Open", note="Improvement action created."))
+        db.session.commit()
+        flash("Improvement action created.", "success")
+        return redirect(url_for("main.action_detail", action_id=action.id))
+    selected_source = (request.args.get("source_ref") or "").strip()
+    return render_template("action_form.html", options=options, month=month,
+                           selected_source=selected_source if selected_source in dict(options) else "",
+                           priorities=ACTION_PRIORITIES)
+
+
+@bp.route("/actions/<int:action_id>")
+def action_detail(action_id):
+    action = _visible_action_query().filter(ImprovementAction.id == action_id).first_or_404()
+    return render_template("action_detail.html", action=action, statuses=ACTION_STATUSES,
+                           priorities=ACTION_PRIORITIES, today=date.today(),
+                           can_edit=current_user.role in ACTION_EDIT_ROLES)
+
+
+@bp.route("/actions/<int:action_id>/update", methods=["POST"])
+def action_update(action_id):
+    action = _visible_action_query().filter(ImprovementAction.id == action_id).first_or_404()
+    _action_can_edit(action)
+    new_status = (request.form.get("status") or "").strip()
+    new_owner = (request.form.get("owner") or "").strip()
+    priority = (request.form.get("priority") or "").strip()
+    note = (request.form.get("note") or "").strip()
+    if new_status not in ACTION_STATUSES or priority not in ACTION_PRIORITIES or not 2 <= len(new_owner) <= 150 or not 3 <= len(note) <= 5000:
+        flash("Choose a valid status, priority and owner, and add a progress note (3–5,000 characters).", "danger")
+        return redirect(url_for("main.action_detail", action_id=action.id))
+    try:
+        due_date = date.fromisoformat(request.form.get("due_date") or "")
+        evidence_url = _safe_evidence_url(request.form.get("evidence_url"))
+    except ValueError:
+        flash("Provide a valid deadline and evidence URL.", "danger")
+        return redirect(url_for("main.action_detail", action_id=action.id))
+    if new_status == "Completed" and not evidence_url:
+        flash("Add an evidence link before marking an action Completed.", "danger")
+        return redirect(url_for("main.action_detail", action_id=action.id))
+    previous_status = action.status
+    action.status, action.owner, action.priority = new_status, new_owner, priority
+    action.due_date, action.evidence_url = due_date, evidence_url
+    action.completed_at = datetime.utcnow() if new_status == "Completed" else None
+    db.session.add(ImprovementActionEvent(action_id=action.id, author_id=current_user.id,
+        previous_status=previous_status, new_status=new_status, note=note))
+    db.session.commit()
+    flash("Action updated and progress recorded.", "success")
+    return redirect(url_for("main.action_detail", action_id=action.id))

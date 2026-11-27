@@ -252,3 +252,7 @@ The monthly workbook importer now accepts Supported Living sub-service reference
 - No database migration is required.
 
 Use the existing `KPI_Data` columns. For an SL child row, put the child reference in `Service Code` and keep `Scope` as `Service`.
+
+## Phase 3.33 – Improvement Action Tracker
+
+New `/actions` dashboard for owner-assigned, deadline-driven improvements linked to Red/Amber KPI results, including Supported Living child KPIs. Role-scoped access, CSRF protection, action status history, evidence links and additional audit logging are included. See `PHASE_3_33_DEPLOYMENT.md` for deployment checks and database considerations.

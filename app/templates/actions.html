@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Improvement Actions | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+  <div><div class="eyebrow">PERFORMANCE IMPROVEMENT</div><h1 class="h3 mb-1">Improvement Actions</h1>
+    <p class="text-secondary mb-0">Accountable actions against Red and Amber KPI results. Overdue actions remain visible until resolved.</p></div>
+  {% if can_edit %}<a class="btn btn-primary" href="{{ url_for('main.action_create') }}"><i class="bi bi-plus-lg me-1"></i>New action</a>{% endif %}
+</div>
+{% set open_count = actions|selectattr('status','equalto','Open')|list|length %}
+{% set overdue_count = actions|selectattr('due_date','lt',today)|rejectattr('status','in',['Completed','Cancelled'])|list|length %}
+<div class="row g-3 mb-4"><div class="col-md-4"><div class="card card-panel"><div class="card-body"><div class="text-secondary small">Actions in view</div><div class="display-6 fw-semibold">{{ actions|length }}</div></div></div></div>
+<div class="col-md-4"><div class="card card-panel"><div class="card-body"><div class="text-secondary small">Open</div><div class="display-6 fw-semibold">{{ open_count }}</div></div></div></div>
+<div class="col-md-4"><div class="card card-panel"><div class="card-body"><div class="text-secondary small">Overdue</div><div class="display-6 fw-semibold text-danger">{{ overdue_count }}</div></div></div></div></div>
+<form method="get" class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <label for="actionStatusFilter" class="form-label mb-0">Status</label>
+  <select class="form-select w-auto" id="actionStatusFilter" name="status">
+    <option value="">All statuses</option>
+    {% for option in statuses %}<option value="{{ option }}" {% if status == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-outline-primary" type="submit">Filter</button>
+</form>
+<div class="card card-panel"><div class="card-body p-0"><div class="table-responsive">
+<table class="table align-middle mb-0"><thead><tr><th>Service / KPI</th><th>Action</th><th>Owner</th><th>Due date</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody>
+{% for item in actions %}
+<tr><td><strong>{{ item.sub_service.name if item.sub_service else item.service.name }}</strong><div class="small text-secondary">{{ item.kpi.name }} · {{ item.reporting_month.strftime('%b %Y') }} · {{ item.source_rag }}</div></td>
+<td>{{ item.title }}</td><td>{{ item.owner }}</td>
+<td {% if item.due_date < today and item.status not in ['Completed','Cancelled'] %}class="text-danger fw-semibold"{% endif %}>{{ item.due_date.strftime('%d %b %Y') }}{% if item.due_date < today and item.status not in ['Completed','Cancelled'] %} · Overdue{% endif %}</td>
+<td>{{ item.priority }}</td><td><span class="badge text-bg-{% if item.status == 'Completed' %}success{% elif item.status == 'Cancelled' %}secondary{% elif item.status == 'Open' %}warning{% else %}primary{% endif %}">{{ item.status }}</span></td>
+<td><a href="{{ url_for('main.action_detail', action_id=item.id) }}" class="btn btn-sm btn-outline-primary">View</a></td></tr>
+{% else %}<tr><td colspan="7" class="text-center text-secondary py-4">No improvement actions match this filter.</td></tr>{% endfor %}
+</tbody></table></div></div></div>
+{% if actions|length >= 500 %}<p class="small text-warning mt-2">Showing the first 500 actions. Narrow by status for more focused review.</p>{% endif %}
+{% endblock %}
