@@ -45,3 +45,7 @@ git status --short
 - This is a live report export, not an approved/locked monthly reporting snapshot. Formal reporting sign-off and locks are planned for Phase 3.38.
 - There is no automatic email delivery or scheduling yet. Those belong to the notifications phase.
 - The PDF shows a capped set of detailed KPI transitions and actions; full detail remains in the app.
+
+
+### PowerPoint export amendment
+The PDF export has been replaced by an editable PowerPoint download. See `PHASE_3_36_PPTX_EXPORT.md`. `python-pptx==1.0.2` replaces ReportLab in requirements.
