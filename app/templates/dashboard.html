@@ -141,7 +141,7 @@ async function saveDashboardLayout() {
   try {
     const response = await fetch('{{ url_for("main.save_dashboard_layout") }}', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token() }}'},
       body: JSON.stringify({layout: currentDashboardLayout()})
     });
     if (!response.ok) throw new Error('Unable to save dashboard layout');
@@ -173,7 +173,7 @@ customiseBtn?.addEventListener('click', () => setDashboardEditing(!dashboardEdit
 doneBtn?.addEventListener('click', async () => { await saveDashboardLayout(); setDashboardEditing(false); });
 resetBtn?.addEventListener('click', async () => {
   if (!confirm('Reset your Executive dashboard to the default card order?')) return;
-  const response = await fetch('{{ url_for("main.reset_dashboard_layout") }}', {method:'POST'});
+  const response = await fetch('{{ url_for("main.reset_dashboard_layout") }}', {method:'POST', headers: {'X-CSRF-Token': '{{ csrf_token() }}'}});
   if (!response.ok) { alert('The dashboard layout could not be reset.'); return; }
   const payload = await response.json();
   applyDashboardLayout(payload.layout || []);

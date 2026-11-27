@@ -8,7 +8,7 @@
     <p class="text-secondary">Upload the completed .xlsx template. Existing rows for the same reporting month, service and KPI are updated rather than duplicated.</p>
     <div class="card card-panel">
       <div class="card-body p-4">
-        <form method="post" enctype="multipart/form-data">
+        <form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <label class="form-label fw-semibold">Excel workbook</label>
           <input type="file" name="file" class="form-control mb-3" accept=".xlsx" required>
           <button class="btn btn-primary w-100">Validate and import</button>

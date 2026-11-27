@@ -75,6 +75,11 @@ def create_app():
 
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 
+    from .security import csrf_token, validate_csrf, security_headers
+    app.jinja_env.globals["csrf_token"] = csrf_token
+    app.before_request(validate_csrf)
+    app.after_request(security_headers)
+
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
@@ -83,6 +88,7 @@ def create_app():
     login_manager.login_message_category = "info"
 
     from . import models  # noqa: F401
+    from . import audit  # noqa: F401
 
     @login_manager.user_loader
     def load_user(user_id):

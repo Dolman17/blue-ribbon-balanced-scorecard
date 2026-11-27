@@ -19,7 +19,7 @@ def _worst_result(results):
     return min(results, key=lambda r: order.get(r.rag, 3)) if results else None
 
 
-def aggregate_parent_service(parent_service_id, reporting_month):
+def aggregate_parent_service(parent_service_id, reporting_month, *, commit=True):
     """Roll active SL sub-service KPI results into the top-level Supported Living service.
 
     Parent KPI rows are stored as ordinary service results so all existing dashboards,
@@ -134,13 +134,16 @@ def aggregate_parent_service(parent_service_id, reporting_month):
         parent_result.imported_at = datetime.utcnow()
         changed += 1
 
-    db.session.commit()
+    db.session.flush()
 
     # Keep parent NPS mathematically correct by using all underlying responses.
     from app.services.nps import recalculate_service_nps, recalculate_group_nps
     recalculate_service_nps(parent_service_id, reporting_month)
     recalculate_group_nps(reporting_month)
-    db.session.commit()
+    if commit:
+        db.session.commit()
+    else:
+        db.session.flush()
     return changed
 
 

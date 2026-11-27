@@ -38,7 +38,7 @@
   <div class="small"><strong>How this works:</strong> existing values are pre-filled. Change any value and save to amend it. Blank KPI rows are ignored, so you can add only the late information you have received. Saved rows are marked as <strong>Manual entry</strong> and the RAG is recalculated unless you choose a manual RAG.</div>
 </div>
 
-<form method="post">
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="month" value="{{ selected_month.strftime('%Y-%m') }}">
   <input type="hidden" name="scope" value="{{ scope }}">
   {% if service %}<input type="hidden" name="service_id" value="{{ service.id }}">{% endif %}

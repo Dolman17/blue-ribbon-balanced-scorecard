@@ -166,12 +166,21 @@ def _rag_formula(score_ref):
     return f'=IF({score_ref}="","Unscored",IF({score_ref}>=7.5,"Green",IF({score_ref}>=3.75,"Amber","Red")))'
 
 
+
+def _safe_excel_text(value):
+    """Keep untrusted strings as literal Excel text (not formulas)."""
+    if not isinstance(value, str):
+        return value
+    if value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r", "\n")):
+        return "'" + value
+    return value
+
 def _result_display(result):
     if result is None:
         return ""
     if result.value_numeric is not None:
         return result.value_numeric
-    return result.value_text or ""
+    return _safe_excel_text(result.value_text or "")
 
 
 def _style_card(ws, label_cell, value_cell, fill=WHITE, accent=BLUE, value_format=None):
@@ -624,8 +633,8 @@ def build_board_pack(reporting_month):
                 grp_ws.cell(row=idx, column=3).number_format = '0.0;-0.0;0'
         grp_ws.cell(row=idx, column=4, value=result.rag)
         _rag_fill(grp_ws.cell(row=idx, column=4))
-        grp_ws.cell(row=idx, column=5, value=result.commentary or "")
-        grp_ws.cell(row=idx, column=6, value=result.source or "")
+        grp_ws.cell(row=idx, column=5, value=_safe_excel_text(result.commentary or ""))
+        grp_ws.cell(row=idx, column=6, value=_safe_excel_text(result.source or ""))
         grp_ws.cell(row=idx, column=5).alignment = Alignment(wrap_text=True, vertical="top")
         for col in range(1, 7):
             grp_ws.cell(row=idx, column=col).border = Border(bottom=THIN_GREY)
@@ -684,8 +693,8 @@ def build_board_pack(reporting_month):
                     svc_ws.cell(row=idx, column=3).number_format = '0.0;-0.0;0'
             svc_ws.cell(row=idx, column=4, value=result.rag)
             _rag_fill(svc_ws.cell(row=idx, column=4))
-            svc_ws.cell(row=idx, column=5, value=result.commentary or "")
-            svc_ws.cell(row=idx, column=6, value=result.source or "")
+            svc_ws.cell(row=idx, column=5, value=_safe_excel_text(result.commentary or ""))
+            svc_ws.cell(row=idx, column=6, value=_safe_excel_text(result.source or ""))
             svc_ws.cell(row=idx, column=5).alignment = Alignment(wrap_text=True, vertical="top")
             for col in range(1, 7):
                 svc_ws.cell(row=idx, column=col).border = Border(bottom=THIN_GREY)
@@ -706,6 +715,25 @@ def build_board_pack(reporting_month):
         svc_ws.freeze_panes = "A8"
         svc_ws.auto_filter.ref = f"A7:F{max(7, 7 + len(ordered))}"
         _finish_sheet(svc_ws, landscape=True, fit_to_width=1, print_title_rows="1:7")
+
+    # Final defense in depth: text from the database must never become an
+    # executable Excel formula. Only fixed report formulas in known summary
+    # columns are intentionally retained.
+    expected_formula_columns = {
+        "Local Authority Summary": {2, 3, 4, 5, 6},
+        "Regional Manager Summary": {2, 3, 4, 5, 6},
+        "Registered Manager Summary": {3, 4, 5, 6, 7},
+    }
+    for sheet in wb.worksheets:
+        for row_cells in sheet.iter_rows():
+            for cell in row_cells:
+                if cell.data_type == "f":
+                    if not (cell.row >= 5 and cell.column in expected_formula_columns.get(sheet.title, set())):
+                        cell.value = _safe_excel_text(cell.value)
+                        cell.data_type = "s"
+                elif isinstance(cell.value, str) and cell.value.lstrip().startswith(("=", "+", "-", "@")):
+                    cell.value = _safe_excel_text(cell.value)
+                    cell.data_type = "s"
 
     # Workbook calculation settings.
     wb.calculation.fullCalcOnLoad = True

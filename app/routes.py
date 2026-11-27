@@ -2,12 +2,16 @@ from collections import defaultdict
 import json
 from datetime import date, datetime
 from io import BytesIO
+import hmac
+import logging
+from urllib.parse import urlsplit
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from sqlalchemy import func, or_
 from flask_login import current_user, login_user, logout_user
 
 from .extensions import db
+from .security import login_throttled, record_failed_login, clear_successful_login
 from .models import (
     ImportLog, KPIDefinition, KPIResult, NPSResponse, Service,
     SLSubService, SLSubServiceKPIResult, User,
@@ -140,6 +144,7 @@ def require_authentication():
     if request.endpoint in {"main.login", "main.setup"}:
         return None
     if User.query.count() == 0:
+        # Initial setup remains locked unless explicitly authorized with ADMIN_SETUP_TOKEN.
         return redirect(url_for("main.setup"))
     if not current_user.is_authenticated:
         return redirect(url_for("main.login", next=request.url))
@@ -202,7 +207,16 @@ def setup():
     if User.query.count() > 0:
         return redirect(url_for("main.login"))
 
+    configured_setup_token = current_app.config.get("ADMIN_SETUP_TOKEN", "")
+    if not configured_setup_token:
+        abort(403, description="Initial administrator setup is disabled. Configure ADMIN_SETUP_TOKEN securely.")
     if request.method == "POST":
+        submitted_setup_token = request.form.get("setup_token", "")
+        if login_throttled("initial-admin", setup=True):
+            abort(429, description="Too many setup attempts. Try again in 15 minutes.")
+        if not hmac.compare_digest(configured_setup_token, submitted_setup_token):
+            record_failed_login("initial-admin", setup=True)
+            abort(403, description="Invalid setup authorization.")
         username = (request.form.get("username") or "").strip()
         email = (request.form.get("email") or "").strip().lower() or None
         password = request.form.get("password") or ""
@@ -242,17 +256,24 @@ def login():
 
     if request.method == "POST":
         identity = (request.form.get("identity") or "").strip()
+        if login_throttled(identity):
+            abort(429, description="Too many login attempts. Try again in 15 minutes.")
         password = request.form.get("password") or ""
         user = User.query.filter(or_(func.lower(User.username) == identity.lower(), func.lower(User.email) == identity.lower())).first()
         if not user or not user.active or not user.check_password(password):
+            record_failed_login(identity)
             flash("Incorrect username/email or password.", "danger")
             return render_template("login.html", identity=identity)
+        clear_successful_login(identity)
         login_user(user, remember=request.form.get("remember") == "on")
         user.last_login_at = datetime.utcnow()
         db.session.commit()
         next_url = request.args.get("next")
-        if next_url and next_url.startswith("/"):
-            return redirect(next_url)
+        # Only same-origin path redirects; disallow //, backslashes and URL schemes.
+        if next_url and next_url.startswith("/") and not next_url.startswith("//") and "\\" not in next_url:
+            parsed = urlsplit(next_url)
+            if not parsed.netloc and not parsed.scheme:
+                return redirect(next_url)
         return redirect(url_for("main.dashboard"))
 
     return render_template("login.html", identity="")
@@ -668,8 +689,11 @@ def upload():
             else:
                 flash(f"Imported {outcome['rows_imported']} KPI rows successfully.", "success")
             return redirect(url_for("main.dashboard"))
-        except Exception as exc:
+        except ValueError as exc:
             flash(str(exc), "danger")
+        except Exception:
+            logging.exception("Workbook import failed")
+            flash("Import failed. Please check workbook format or contact an administrator.", "danger")
 
     logs = ImportLog.query.order_by(ImportLog.imported_at.desc()).limit(10).all()
     return render_template("upload.html", logs=logs)
