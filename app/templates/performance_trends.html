@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Performance Trends | Blue Ribbon BSC{% endblock %}
+{% block content %}
+<div class="mb-4"><div class="eyebrow">PERFORMANCE INTELLIGENCE</div><h1 class="h3 mb-1">Performance Trends</h1>
+<p class="text-secondary">Compare the selected reporting month with the previous available month. A missing score is never treated as zero or as a change.</p></div>
+<form method="get" class="card card-panel mb-4"><div class="card-body row g-3 align-items-end">
+<div class="col-md-3"><label class="form-label" for="trend-month">Reporting month</label><select id="trend-month" name="month" class="form-select">
+{% for month in months %}<option value="{{ month.strftime('%Y-%m') }}" {% if month == selected_month %}selected{% endif %}>{{ month.strftime('%B %Y') }}</option>{% endfor %}</select></div>
+{% if not scoped %}
+<div class="col-md-3"><label class="form-label" for="trend-region">Regional Manager</label><select id="trend-region" name="regional_manager" class="form-select"><option value="">All regions</option>{% for name in options.regional_managers %}<option value="{{ name }}" {% if filters.regional_manager == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></div>
+<div class="col-md-3"><label class="form-label" for="trend-authority">Local Authority</label><select id="trend-authority" name="local_authority" class="form-select"><option value="">All Local Authorities</option>{% for name in options.local_authorities %}<option value="{{ name }}" {% if filters.local_authority == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></div>
+<div class="col-md-2"><label class="form-label" for="trend-type">Service Type</label><select id="trend-type" name="service_type" class="form-select"><option value="">All types</option>{% for name in options.service_types %}<option value="{{ name }}" {% if filters.service_type == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></div>
+{% endif %}<div class="col-md-1"><button class="btn btn-primary" type="submit">Apply</button></div>
+</div></form>
+{% if report %}
+<div class="d-flex flex-wrap gap-2 mb-3 small text-secondary"><span><strong>Current:</strong> {{ selected_month.strftime('%B %Y') }}</span><span>•</span><span><strong>Previous:</strong> {{ previous_month.strftime('%B %Y') if previous_month else 'No earlier month' }}</span></div>
+<div class="row g-3 mb-4">
+{% for title, value, style in [('Improving services',report.improving,'success'),('Declining services',report.declining,'danger'),('Unchanged services',report.unchanged,'secondary'),('Comparable services',report.comparable,'primary')] %}
+<div class="col-6 col-lg-3"><div class="card card-panel h-100"><div class="card-body"><div class="small text-secondary">{{ title }}</div><div class="display-6 fw-semibold text-{{ style }}">{{ value }}</div></div></div></div>{% endfor %}
+</div>
+<div class="card card-panel mb-4"><div class="card-body"><h2 class="h5">Historical portfolio trend</h2>
+<p class="small text-secondary">Up to 12 available reporting months. Average of scored services in your selected portfolio; service coverage may change between months.</p>
+<div class="d-flex flex-wrap gap-3 align-items-end" style="min-height:140px">
+{% for point in history %}<div class="text-center" style="min-width:62px; flex:1"><div class="small fw-semibold">{{ '%.2f'|format(point.score) if point.score is not none else 'N/A' }}</div>
+<div class="bg-light rounded d-flex align-items-end mx-auto" style="height:95px;max-width:36px;overflow:hidden"><div class="bg-primary w-100 rounded-top" style="height:{{ ((point.score or 0) * 10)|round|int }}%;" title="{{ point.count }} scored services"></div></div>
+<div class="small text-secondary mt-1">{{ point.month.strftime('%b %y') }}</div><div class="small text-secondary">n={{ point.count }}</div></div>
+{% endfor %}</div></div></div>
+<div class="card card-panel mb-4"><div class="card-body"><h2 class="h5">Month-on-month score movement</h2><p class="small text-secondary">Weighted overall KPI score /10. The change compares only services scored in both months. N/A means there is no valid comparison.</p>
+<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>Service</th><th>Regional Manager</th><th>Previous</th><th>Current</th><th>Change</th><th>RAG movement</th><th>Coverage (current / previous)</th></tr></thead><tbody>
+{% for item in report.rows %}<tr><td><a href="{{ url_for('main.service_detail', service_id=item.service.id, month=selected_month.strftime('%Y-%m')) }}">{{ item.service.name }}</a></td><td>{{ item.service.regional_manager or 'Unassigned' }}</td><td>{{ '%.2f'|format(item.previous) if item.previous is not none else 'N/A' }}</td><td><strong>{{ '%.2f'|format(item.current) if item.current is not none else 'N/A' }}</strong></td><td>{% if item.delta is not none %}<span class="fw-semibold text-{{ 'success' if item.delta > 0 else 'danger' if item.delta < 0 else 'secondary' }}">{{ '%+.2f'|format(item.delta) }}</span>{% else %}N/A{% endif %}</td><td>{{ item.previous_rag }} → {{ item.current_rag }}</td><td>{{ item.scored_current }} / {{ item.scored_previous }}</td></tr>
+{% else %}<tr><td colspan="7" class="text-center text-secondary py-4">No services have results for this selection.</td></tr>{% endfor %}
+</tbody></table></div></div></div>
+<div class="row g-4"><div class="col-xl-7"><div class="card card-panel h-100"><div class="card-body"><h2 class="h5">KPI RAG changes</h2><p class="small text-secondary">Only KPIs scored in both months are shown. Red → Amber → Green indicates improvement.</p>
+<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Service</th><th>KPI</th><th>Previous</th><th>Current</th><th>Movement</th></tr></thead><tbody>
+{% for item in report.transitions[:100] %}<tr><td>{{ item.service.name }}</td><td>{{ item.kpi.name }}</td><td>{{ item.previous }}</td><td>{{ item.current }}</td><td><span class="text-{{ 'success' if item.direction == 'Improved' else 'danger' }} fw-semibold">{{ item.direction }}</span></td></tr>
+{% else %}<tr><td colspan="5" class="text-center text-secondary py-4">No comparable KPI RAG transitions.</td></tr>{% endfor %}
+</tbody></table></div>{% if report.transitions|length > 100 %}<div class="small text-secondary">Displaying the first 100 of {{ report.transitions|length }} KPI changes.</div>{% endif %}</div></div></div>
+<div class="col-xl-5"><div class="card card-panel h-100"><div class="card-body"><h2 class="h5">Service ranking</h2><p class="small text-secondary">Current month's scored services, highest first.</p><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Rank</th><th>Service</th><th>Score / 10</th></tr></thead><tbody>
+{% for item in report.ranked %}<tr><td>{{ loop.index }}</td><td>{{ item.service.name }}</td><td>{{ '%.2f'|format(item.current) }}</td></tr>{% else %}<tr><td colspan="3" class="text-secondary">No scored services.</td></tr>{% endfor %}</tbody></table></div></div></div></div></div>
+{% else %}<div class="alert alert-info">Import KPI data to view historical performance comparisons.</div>{% endif %}
+{% endblock %}
