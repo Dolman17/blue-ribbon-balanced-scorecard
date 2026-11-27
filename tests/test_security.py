@@ -377,3 +377,76 @@ def test_data_quality_registered_and_regional_manager_scope(client, app):
         assert hidden not in response.data
         t = token(client, '/data-quality')
         client.post('/logout', data={'csrf_token': t})
+
+# Phase 3.36 - Monthly Board Reporting
+
+def test_board_reporting_summary_and_saved_commentary(client, app):
+    from datetime import date
+    from app.models import BoardReportNarrative, AuditEvent
+    from app.services.board_reporting import build_summary
+    provision_admin(client)
+    service_id, result_id = _create_red_kpi_result(app)
+    with app.app_context():
+        report = build_summary(date(2026, 10, 1), None)
+        assert report["rag_counts"]["Red"] == 1
+        assert report["scored_services"] == 1
+        assert report["quality"]["totals"]["expected"] > 0
+    page = client.get("/board-report?month=2026-10")
+    assert page.status_code == 200
+    assert b"Monthly Board Performance Report" in page.data
+    t = token(client, "/board-report?month=2026-10")
+    assert client.post("/board-report/commentary", data={
+        "csrf_token": t, "month": "2026-10", "highlights": "Recruitment improved",
+        "concerns": "Workforce pressures", "priorities": "Review vacancies",
+    }).status_code == 302
+    with app.app_context():
+        record = BoardReportNarrative.query.filter_by(reporting_month=date(2026, 10, 1)).one()
+        assert record.highlights == "Recruitment improved"
+        assert AuditEvent.query.filter_by(entity_type="BoardReportNarrative").count() >= 1
+    page = client.get("/board-report?month=2026-10")
+    assert b"Recruitment improved" in page.data
+
+
+def test_board_pdf_and_commentary_escaping(client, app):
+    provision_admin(client)
+    _create_red_kpi_result(app)
+    t = token(client, "/board-report?month=2026-10")
+    response = client.post("/board-report/commentary", data={
+        "csrf_token": t, "month": "2026-10", "highlights": "<script>alert('x')</script>",
+        "concerns": "A & B", "priorities": "Check <important> information",
+    })
+    assert response.status_code == 302
+    page = client.get("/board-report?month=2026-10")
+    assert b"&lt;script&gt;" in page.data
+    response = client.get("/board-report/pdf?month=2026-10")
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF-")
+    assert len(response.data) > 1000
+
+
+def test_board_reporting_is_restricted_to_portfolio_roles(client, app):
+    from app.models import User
+    provision_admin(client)
+    service_id, _ = _create_red_kpi_result(app)
+    with app.app_context():
+        manager = User(username="board-scoped-manager", role="Registered Manager", active=True, service_id=service_id)
+        manager.set_password("very-long-test-passphrase")
+        viewer = User(username="board-report-viewer", role="Viewer", active=True)
+        viewer.set_password("very-long-test-passphrase")
+        db.session.add_all([manager, viewer])
+        db.session.commit()
+    t = token(client, "/")
+    client.post("/logout", data={"csrf_token": t})
+    for username in ("board-scoped-manager", "board-report-viewer"):
+        t = token(client, "/login")
+        client.post("/login", data={"csrf_token": t, "identity": username,
+                                    "password": "very-long-test-passphrase"})
+        status = 403 if username == "board-scoped-manager" else 200
+        assert client.get("/board-report?month=2026-10").status_code == status
+        assert client.get("/board-report/pdf?month=2026-10").status_code == status
+        t = token(client, "/board-report?month=2026-10") if status == 200 else token(client, "/service/" + str(service_id))
+        assert client.post("/board-report/commentary", data={
+            "csrf_token": t, "month": "2026-10", "highlights": "Not permitted",
+        }).status_code == 403
+        client.post("/logout", data={"csrf_token": t})

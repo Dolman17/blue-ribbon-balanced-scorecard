@@ -9,3 +9,4 @@ python-dateutil==2.9.0.post0
 Flask-Login==0.6.3
 
 gunicorn==23.0.0
+reportlab==4.4.5
