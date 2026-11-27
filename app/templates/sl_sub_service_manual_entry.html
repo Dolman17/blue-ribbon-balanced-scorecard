@@ -21,7 +21,7 @@
 
 <div class="alert alert-info border-0 shadow-sm py-2 small"><i class="bi bi-info-circle me-1"></i> Save the child-level values here. The parent <strong>{{ service.name }}</strong> KPI rows will then be recalculated automatically. The roll-up method is shown against each KPI.</div>
 
-<form method="post">
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="month" value="{{ selected_month.strftime('%Y-%m') }}">
   <div class="visual-card p-0 overflow-hidden">
     <div class="table-responsive manual-entry-wrap">

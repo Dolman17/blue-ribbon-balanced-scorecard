@@ -150,6 +150,26 @@ class ImportLog(db.Model):
     message = db.Column(db.Text, nullable=True)
 
 
+class AuditEvent(db.Model):
+    """Minimal audit trail for governance-sensitive database mutations."""
+    id = db.Column(db.Integer, primary_key=True)
+    actor_id = db.Column(db.Integer, nullable=True, index=True)
+    action = db.Column(db.String(12), nullable=False)
+    entity_type = db.Column(db.String(60), nullable=False)
+    entity_id = db.Column(db.String(80), nullable=True)
+    changed_fields = db.Column(db.Text, nullable=True)
+    occurred_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
+class LoginAttempt(db.Model):
+    """Rolling 15-minute authentication failure counter, shared by all workers."""
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(80), nullable=False, index=True)
+    identity_hash = db.Column(db.String(64), nullable=False, index=True)
+    action = db.Column(db.String(12), nullable=False, default="login")
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)

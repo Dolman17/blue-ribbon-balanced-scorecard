@@ -2,7 +2,7 @@
 {% block title %}KPI Setup | Blue Ribbon BSC{% endblock %}
 {% block content %}
 <div class="mb-4"><div class="eyebrow">CONFIGURATION</div><h1 class="h3 mb-1">KPI scoring setup</h1><p class="text-secondary mb-0">Thresholds, weights and Supported Living roll-up methods are configurable here. For Target Range KPIs, Target is the ideal value and Green/Amber thresholds are the permitted +/- variance from that target.</p></div>
-<form method="post">
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="card card-panel"><div class="card-body p-0"><div class="table-responsive"><table class="table align-middle mb-0 config-table"><thead><tr><th>KPI</th><th>Domain</th><th>Direction</th><th>Target</th><th>Green threshold / tolerance</th><th>Amber threshold / tolerance</th><th>Weight</th><th>SL roll-up</th><th>Group only</th><th>Active</th><th>Notes</th></tr></thead><tbody>
 {% for kpi in kpis %}<tr>
   <td><div class="fw-semibold">{{ kpi.name }}</div><div class="small text-secondary">{{ kpi.code }}</div></td>

@@ -13,7 +13,7 @@
       <tbody>
       {% for service in services %}
       <tr>
-        <form method="post">
+        <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="service_id" value="{{ service.id }}">
           <td><span class="service-code">{{ service.code }}</span></td>
           <td><input class="form-control form-control-sm" name="name" value="{{ service.name }}" required></td>
@@ -28,7 +28,7 @@
         </form>
       </tr>
       {% if service.manual_master_data %}
-      <tr class="master-subrow"><td></td><td colspan="8"><span class="text-secondary small">Manual hierarchy protected from future imports.</span></td><td><form method="post" action="{{ url_for('main.service_use_import_master', service_id=service.id) }}"><button class="btn btn-link btn-sm p-0 text-decoration-none">Use workbook values</button></form></td></tr>
+      <tr class="master-subrow"><td></td><td colspan="8"><span class="text-secondary small">Manual hierarchy protected from future imports.</span></td><td><form method="post" action="{{ url_for('main.service_use_import_master', service_id=service.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-link btn-sm p-0 text-decoration-none">Use workbook values</button></form></td></tr>
       {% endif %}
       {% else %}
       <tr><td colspan="10" class="text-center text-secondary py-5">No services found.</td></tr>

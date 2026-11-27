@@ -1,4 +1,7 @@
 from datetime import date, datetime
+from io import BytesIO
+from zipfile import ZipFile, BadZipFile
+import logging
 
 import pandas as pd
 
@@ -93,16 +96,49 @@ def _split_value(kpi, raw_value):
     return numeric_value, text_value
 
 
+def _validate_excel_container(file_source):
+    """Reject XLSX ZIP bombs and suspicious oversized workbook structures."""
+    if hasattr(file_source, "read"):
+        pos = file_source.tell()
+        payload = file_source.read()
+        file_source.seek(pos)
+    else:
+        with open(file_source, "rb") as stream:
+            payload = stream.read()
+    if len(payload) > 20 * 1024 * 1024:
+        raise ValueError("Workbook exceeds the 20 MB upload limit.")
+    try:
+        with ZipFile(BytesIO(payload)) as archive:
+            entries = archive.infolist()
+            if len(entries) > 500:
+                raise ValueError("Workbook contains too many internal files.")
+            if sum(e.file_size for e in entries) > 80 * 1024 * 1024:
+                raise ValueError("Workbook expands beyond the 80 MB safety limit.")
+            if any(e.file_size > 45 * 1024 * 1024 or
+                   (e.file_size > 1024 * 1024 and e.file_size / max(1, e.compress_size) > 500)
+                   for e in entries):
+                raise ValueError("Workbook contains an oversized or excessively compressed worksheet.")
+            if not any(e.filename == "xl/workbook.xml" for e in entries):
+                raise ValueError("File is not a valid .xlsx workbook.")
+    except BadZipFile as exc:
+        raise ValueError("File is not a valid .xlsx workbook.") from exc
+
+
 def import_workbook(file_source, original_filename):
     # file_source can be a filesystem path or an in-memory binary stream.
     # Using the ExcelFile object for subsequent reads keeps the importer
     # compatible with BytesIO uploads and avoids temporary-file path issues.
+    _validate_excel_container(file_source)
     xls = pd.ExcelFile(file_source, engine="openpyxl")
     if "Services" not in xls.sheet_names or "KPI_Data" not in xls.sheet_names:
         raise ValueError("Workbook must contain 'Services' and 'KPI_Data' sheets.")
 
     services_df = pd.read_excel(xls, sheet_name="Services")
     kpi_df = pd.read_excel(xls, sheet_name="KPI_Data")
+    if len(services_df) > 1000 or len(kpi_df) > 12000:
+        raise ValueError("Workbook exceeds permitted service or KPI row counts.")
+    if len(services_df.columns) > 50 or len(kpi_df.columns) > 50:
+        raise ValueError("Workbook contains too many columns.")
 
     missing_services = REQUIRED_SERVICE_COLUMNS - set(services_df.columns)
     missing_kpis = REQUIRED_KPI_COLUMNS - set(kpi_df.columns)
@@ -151,6 +187,7 @@ def import_workbook(file_source, original_filename):
     db.session.flush()
 
     errors = []
+    seen_row_keys = set()
     imported = 0
     sl_rows_imported = 0
     affected_sl_parent_months = set()
@@ -174,6 +211,14 @@ def import_workbook(file_source, original_filename):
                 target_type, target = _resolve_service_code(row.get("Service Code"))
                 if kpi.group_only:
                     raise ValueError(f"{kpi.name} is configured as group-only")
+
+            row_key = (
+                reporting_month, scope, kpi_code,
+                target_type, target.id if target is not None else None,
+            )
+            if row_key in seen_row_keys:
+                raise ValueError("Duplicate month/scope/service/KPI combination in workbook")
+            seen_row_keys.add(row_key)
 
             raw_value = _clean(row.get("Value"))
             if raw_value is None:
@@ -237,36 +282,45 @@ def import_workbook(file_source, original_filename):
         except Exception as exc:
             errors.append(f"Row {row_no}: {exc}")
 
-    log.rows_imported = imported
-    log.rows_rejected = len(errors)
-    log.status = "Completed with errors" if errors else "Completed"
-    log.message = "\n".join(errors[:100]) if errors else "Import completed successfully."
-    db.session.commit()
-
-    # Recalculate each affected top-level Supported Living service after the
-    # child-level rows have been committed. This keeps the normal service,
-    # hierarchy and Executive dashboards in sync with the imported drill-down.
-    aggregation_errors = []
-    for parent_service_id, reporting_month in sorted(
-        affected_sl_parent_months,
-        key=lambda item: (item[1], item[0]),
-    ):
-        try:
-            aggregate_parent_service(parent_service_id, reporting_month)
-        except Exception as exc:
-            aggregation_errors.append(
-                f"Supported Living roll-up failed for service ID {parent_service_id} "
-                f"({reporting_month:%Y-%m}): {exc}"
-            )
-
-    if aggregation_errors:
-        log = db.session.get(ImportLog, log.id)
-        log.status = "Completed with errors"
-        existing = log.message or ""
-        rollup_message = "\n".join(aggregation_errors)
-        log.message = f"{existing}\n{rollup_message}".strip()
+    # Atomic imports: either the complete workbook and its Supported Living
+    # roll-ups are saved, or none of the KPI/master changes are retained.
+    # Rejected rows are recorded in the Import Log for a corrected upload.
+    if errors:
+        db.session.rollback()
+        rejected_log = ImportLog(
+            filename=original_filename, rows_received=len(kpi_df),
+            rows_imported=0, rows_rejected=len(errors),
+            status="Rejected (no changes)", message="\n".join(errors[:100]),
+        )
+        db.session.add(rejected_log)
         db.session.commit()
-        errors.extend(aggregation_errors)
+        return {
+            "rows_received": len(kpi_df), "rows_imported": 0,
+            "sl_rows_imported": 0, "rows_rejected": len(errors), "errors": errors,
+        }
+
+    try:
+        db.session.flush()
+        for parent_service_id, reporting_month in sorted(
+            affected_sl_parent_months, key=lambda item: (item[1], item[0]),
+        ):
+            aggregate_parent_service(parent_service_id, reporting_month, commit=False)
+        log.rows_imported = imported
+        log.rows_rejected = 0
+        log.status = "Completed"
+        log.message = "Import completed successfully."
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logging.exception("Atomic workbook import or SL roll-up failed")
+        db.session.add(ImportLog(
+            filename=original_filename, rows_received=len(kpi_df),
+            rows_imported=0, rows_rejected=len(kpi_df),
+            status="Failed (no changes)",
+            message="Import transaction failed. No KPI data was changed. See server logs.",
+        ))
+        db.session.commit()
+        raise ValueError("Workbook import failed and no KPI data was changed. Check server logs.")
 
     return {
         "rows_received": len(kpi_df),

@@ -10,7 +10,7 @@
   <a class="btn btn-outline-secondary" href="{{ url_for('main.user_management') }}">Back to users</a>
 </div>
 
-<form method="post">
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="row g-3">
     <div class="col-lg-7">
       <div class="visual-card h-100">

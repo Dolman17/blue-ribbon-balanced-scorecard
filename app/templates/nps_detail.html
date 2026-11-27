@@ -48,7 +48,7 @@
     <div><div class="eyebrow">MANUAL INPUT</div><h2 class="h5 mb-1">Add monthly NPS responses</h2><p class="text-secondary mb-0">Add as many individual responses as needed. NPS is recalculated automatically when you save.</p></div>
     <button class="btn btn-outline-primary btn-sm" type="button" id="addNpsRow"><i class="bi bi-plus-lg me-1"></i>Add row</button>
   </div>
-  <form method="post">
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="month" value="{{ selected_month.strftime('%Y-%m') }}">
     <div class="table-responsive">
       <table class="table align-middle" id="npsEntryTable">
@@ -85,7 +85,7 @@
           <td><span class="nps-category nps-{{ response.category|lower }}">{{ response.category }}</span></td>
           <td>{{ response.comment or '—' }}</td>
           <td>{{ response.source or '—' }}</td>
-          {% if current_user.is_admin %}<td class="text-end"><form method="post" action="{{ url_for('main.delete_nps_response', response_id=response.id) }}" onsubmit="return confirm('Delete this NPS response?');"><button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button></form></td>{% endif %}
+          {% if current_user.is_admin %}<td class="text-end"><form method="post" action="{{ url_for('main.delete_nps_response', response_id=response.id) }}" onsubmit="return confirm('Delete this NPS response?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button></form></td>{% endif %}
         </tr>
       {% else %}
         <tr><td colspan="{% if not sub_service and service.service_type == 'Supported Living' %}{% if current_user.is_admin %}7{% else %}6{% endif %}{% else %}{% if current_user.is_admin %}6{% else %}5{% endif %}{% endif %}" class="text-center text-secondary py-4">No response-level NPS data has been entered for this month.</td></tr>
