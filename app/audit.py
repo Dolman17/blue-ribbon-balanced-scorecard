@@ -7,9 +7,9 @@ from flask import has_request_context
 from flask_login import current_user
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
-from .models import AuditEvent, Service, SLSubService, KPIResult, SLSubServiceKPIResult, KPIDefinition, NPSResponse, User
+from .models import AuditEvent, Service, SLSubService, KPIResult, SLSubServiceKPIResult, KPIDefinition, NPSResponse, User, ImprovementAction, ImprovementActionEvent
 
-AUDITED = (Service, SLSubService, KPIResult, SLSubServiceKPIResult, KPIDefinition, NPSResponse, User)
+AUDITED = (Service, SLSubService, KPIResult, SLSubServiceKPIResult, KPIDefinition, NPSResponse, User, ImprovementAction, ImprovementActionEvent)
 
 @event.listens_for(Session, "before_flush")
 def audit_changes(session, flush_context, instances):

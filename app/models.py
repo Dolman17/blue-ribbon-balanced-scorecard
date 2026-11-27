@@ -206,3 +206,42 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class ImprovementAction(db.Model):
+    """Accountable improvement linked to a historical Red/Amber KPI result."""
+    id = db.Column(db.Integer, primary_key=True)
+    service_id = db.Column(db.Integer, db.ForeignKey("service.id"), nullable=False, index=True)
+    sub_service_id = db.Column(db.Integer, db.ForeignKey("sl_sub_service.id"), nullable=True, index=True)
+    kpi_id = db.Column(db.Integer, db.ForeignKey("kpi_definition.id"), nullable=False, index=True)
+    reporting_month = db.Column(db.Date, nullable=False, index=True)
+    source_rag = db.Column(db.String(20), nullable=False)
+    title = db.Column(db.String(180), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    owner = db.Column(db.String(150), nullable=False)
+    due_date = db.Column(db.Date, nullable=False, index=True)
+    status = db.Column(db.String(30), nullable=False, default="Open", index=True)
+    priority = db.Column(db.String(12), nullable=False, default="Medium")
+    evidence_url = db.Column(db.String(1000), nullable=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    service = db.relationship("Service", foreign_keys=[service_id])
+    sub_service = db.relationship("SLSubService", foreign_keys=[sub_service_id])
+    kpi = db.relationship("KPIDefinition", foreign_keys=[kpi_id])
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+
+
+class ImprovementActionEvent(db.Model):
+    """Append-only action history; never deletes existing entries."""
+    id = db.Column(db.Integer, primary_key=True)
+    action_id = db.Column(db.Integer, db.ForeignKey("improvement_action.id"), nullable=False, index=True)
+    author_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    occurred_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    previous_status = db.Column(db.String(30), nullable=True)
+    new_status = db.Column(db.String(30), nullable=False)
+    note = db.Column(db.Text, nullable=False)
+    action = db.relationship("ImprovementAction", backref=db.backref("events", lazy="select", order_by="ImprovementActionEvent.occurred_at.desc()"))
+    author = db.relationship("User")

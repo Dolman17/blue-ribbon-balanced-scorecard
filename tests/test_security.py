@@ -119,3 +119,108 @@ def test_failed_import_is_atomic(app):
         assert result["rows_imported"] == 0
         from app.models import Service
         assert Service.query.filter_by(code="NEW_SERVICE").first() is None
+
+
+def _create_red_kpi_result(app):
+    from datetime import date
+    from app.models import Service, KPIDefinition, KPIResult
+    with app.app_context():
+        service = Service(code="ACTION_TEST", name="Action Test House", regional_manager="Region A", service_type="Registered", active=True)
+        db.session.add(service)
+        db.session.flush()
+        kpi = KPIDefinition(code="TEST_RISK", name="Test risk indicator", domain="Workforce", direction="lower", active=True)
+        db.session.add(kpi)
+        db.session.flush()
+        result = KPIResult(reporting_month=date(2026, 10, 1), scope="service", service_id=service.id,
+                           kpi_id=kpi.id, value_numeric=20.0, rag="Red", source="Security test")
+        db.session.add(result)
+        db.session.commit()
+        return service.id, result.id
+
+
+def test_improvement_action_create_update_and_audit(client, app):
+    from app.models import ImprovementAction, ImprovementActionEvent
+    from datetime import date
+    provision_admin(client)
+    service_id, result_id = _create_red_kpi_result(app)
+    t = token(client, "/actions/new?month=2026-10")
+    response = client.post("/actions/new", data={
+        "csrf_token": t, "month": "2026-10", "source_ref": f"service:{result_id}",
+        "title": "Reduce excessive vacancies", "description": "Review staffing capacity and recruit to approved vacancies.",
+        "owner": "Registered Manager", "due_date": "2026-12-31", "priority": "High",
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        action = ImprovementAction.query.one()
+        action_id = action.id
+        assert action.service_id == service_id
+        assert action.reporting_month == date(2026, 10, 1)
+        assert action.source_rag == "Red"
+        assert ImprovementActionEvent.query.filter_by(action_id=action_id).count() == 1
+    assert client.post(f"/actions/{action_id}/update", data={"status": "Completed"}).status_code == 400
+    t = token(client, f"/actions/{action_id}")
+    response = client.post(f"/actions/{action_id}/update", data={
+        "csrf_token": t, "status": "Completed", "owner": "Registered Manager", "priority": "High",
+        "due_date": "2026-12-31", "note": "Recruitment complete and rotas updated.",
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        assert ImprovementAction.query.get(action_id).status == "Open"  # Evidence required
+    response = client.post(f"/actions/{action_id}/update", data={
+        "csrf_token": t, "status": "Completed", "owner": "Registered Manager", "priority": "High",
+        "due_date": "2026-12-31", "note": "Recruitment complete and rotas updated.",
+        "evidence_url": "https://example.org/evidence/report",
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        assert ImprovementAction.query.get(action_id).status == "Completed"
+        assert ImprovementActionEvent.query.filter_by(action_id=action_id).count() == 2
+
+
+def test_improvement_action_viewer_cannot_mutate(client, app):
+    from app.models import User
+    provision_admin(client)
+    service_id, result_id = _create_red_kpi_result(app)
+    with app.app_context():
+        viewer = User(username="scorecard-viewer", role="Viewer", active=True)
+        viewer.set_password("very-long-test-passphrase")
+        db.session.add(viewer)
+        db.session.commit()
+    t = token(client, "/")
+    client.post("/logout", data={"csrf_token": t})
+    t = token(client, "/login")
+    client.post("/login", data={"csrf_token": t, "identity": "scorecard-viewer",
+                                "password": "very-long-test-passphrase"})
+    assert client.get("/actions").status_code == 200
+    assert client.get("/actions/new?month=2026-10").status_code == 403
+    t = token(client, "/actions")
+    assert client.post("/actions/new", data={"csrf_token": t, "month": "2026-10",
+        "source_ref": f"service:{result_id}"}).status_code == 403
+
+
+def test_registered_manager_improvement_actions_are_scoped(client, app):
+    from app.models import Service, User
+    provision_admin(client)
+    service_id, result_id = _create_red_kpi_result(app)
+    with app.app_context():
+        other = Service(code="OTHER_SITE", name="Other Site", regional_manager="Region B", active=True)
+        db.session.add(other)
+        db.session.flush()
+        manager = User(username="scope-rm", role="Registered Manager", active=True, service_id=other.id)
+        manager.set_password("very-long-test-passphrase")
+        db.session.add(manager)
+        db.session.commit()
+    t = token(client, "/")
+    client.post("/logout", data={"csrf_token": t})
+    t = token(client, "/login")
+    client.post("/login", data={"csrf_token": t, "identity": "scope-rm",
+                                "password": "very-long-test-passphrase"})
+    assert client.get("/actions").status_code == 200
+    assert client.get("/actions/new?month=2026-10").status_code == 200
+    t = token(client, "/actions/new?month=2026-10")
+    response = client.post("/actions/new", data={
+        "csrf_token": t, "month": "2026-10", "source_ref": f"service:{result_id}",
+        "title": "Not authorized", "description": "Unauthorized action test details.",
+        "owner": "Test", "due_date": "2026-12-31", "priority": "High",
+    })
+    assert response.status_code == 400

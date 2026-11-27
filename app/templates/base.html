@@ -23,6 +23,7 @@
       {% if current_user.service_id %}
       <a class="side-link {% if request.endpoint in ['main.service_detail','main.service_nps_detail','main.sl_sub_service_detail','main.sl_sub_service_nps_detail'] %}active{% endif %}" href="{{ url_for('main.service_detail', service_id=current_user.service_id) }}"><i class="bi bi-house-heart"></i><span>{{ current_user.service.name if current_user.service else 'My Service' }}</span></a>
       {% endif %}
+      <a class="side-link {% if request.endpoint in ['main.action_list','main.action_create','main.action_detail'] %}active{% endif %}" href="{{ url_for('main.action_list') }}"><i class="bi bi-list-check"></i><span>Improvement Actions</span></a>
     </nav>
     {% elif current_user.is_authenticated and current_user.role == 'Regional Manager' %}
     <div class="nav-section-label">MY REGION</div>
@@ -30,6 +31,7 @@
       {% if current_user.regional_manager %}
       <a class="side-link {% if request.endpoint in ['main.regional_manager_detail','main.registered_manager_detail','main.service_detail','main.service_nps_detail','main.sl_sub_service_detail','main.sl_sub_service_nps_detail'] %}active{% endif %}" href="{{ url_for('main.regional_manager_detail', manager_name=current_user.regional_manager) }}"><i class="bi bi-diagram-3"></i><span>{{ current_user.regional_manager }}</span></a>
       {% endif %}
+      <a class="side-link {% if request.endpoint in ['main.action_list','main.action_create','main.action_detail'] %}active{% endif %}" href="{{ url_for('main.action_list') }}"><i class="bi bi-list-check"></i><span>Improvement Actions</span></a>
     </nav>
     {% else %}
     <div class="nav-section-label">REPORTS</div>
@@ -37,6 +39,7 @@
       <a class="side-link {% if request.endpoint == 'main.dashboard' %}active{% endif %}" href="{{ url_for('main.dashboard') }}"><i class="bi bi-speedometer2"></i><span>Executive</span></a>
       <a class="side-link {% if request.endpoint in ['main.local_authorities','main.local_authority_detail'] %}active{% endif %}" href="{{ url_for('main.local_authorities') }}"><i class="bi bi-geo-alt"></i><span>Local Authorities</span></a>
       <a class="side-link {% if request.endpoint in ['main.regional_managers','main.regional_manager_detail','main.registered_manager_detail'] %}active{% endif %}" href="{{ url_for('main.regional_managers') }}"><i class="bi bi-people"></i><span>Regional Managers</span></a>
+      <a class="side-link {% if request.endpoint in ['main.action_list','main.action_create','main.action_detail'] %}active{% endif %}" href="{{ url_for('main.action_list') }}"><i class="bi bi-list-check"></i><span>Improvement Actions</span></a>
     </nav>
     <div class="nav-section-label mt-4">ADMIN</div>
     <nav class="side-links">
