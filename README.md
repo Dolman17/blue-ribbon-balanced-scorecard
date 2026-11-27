@@ -260,3 +260,7 @@ New `/actions` dashboard for owner-assigned, deadline-driven improvements linked
 ## Phase 3.34 – Performance Trends
 
 Read-only historical comparison page at `/performance-trends` with monthly service score changes, KPI RAG transitions, service rankings and permission-scoped filters. See `PHASE_3_34_DEPLOYMENT.md`.
+
+## Phase 3.35 — Data Quality & Scoring Assurance
+
+Open **Data Quality** from the side navigation for read-only completeness, low-sample NPS, negative vacancy and SL roll-up coverage warnings. See `PHASE_3_35_DEPLOYMENT.md`.

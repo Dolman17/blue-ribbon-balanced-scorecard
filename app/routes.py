@@ -30,6 +30,7 @@ from .services.analytics import (
     service_rows_for_month,
 )
 from .services.performance_trends import compare_performance
+from .services.data_quality import quality_report
 from .services.exporter import build_board_pack
 from .services.importer import import_workbook
 from .services.scoring import AMBER_SCORE_THRESHOLD, GREEN_SCORE_THRESHOLD, calculate_rag
@@ -172,7 +173,7 @@ def require_authentication():
             "main.service_nps_detail",
             "main.sl_sub_service_detail",
             "main.sl_sub_service_nps_detail",
-            "main.action_list", "main.action_detail", "main.action_create", "main.action_update", "main.performance_trends",
+            "main.action_list", "main.action_detail", "main.action_create", "main.action_update", "main.performance_trends", "main.data_quality",
         }
         if request.endpoint not in allowed_endpoints:
             abort(403, description="Your account is restricted to your assigned service.")
@@ -197,7 +198,7 @@ def require_authentication():
             "main.service_nps_detail",
             "main.sl_sub_service_detail",
             "main.sl_sub_service_nps_detail",
-            "main.action_list", "main.action_detail", "main.action_create", "main.action_update", "main.performance_trends",
+            "main.action_list", "main.action_detail", "main.action_create", "main.action_update", "main.performance_trends", "main.data_quality",
         }
         if request.endpoint not in allowed_endpoints:
             abort(403, description="Your account is restricted to your assigned region.")
@@ -241,6 +242,38 @@ def performance_trends():
                            previous_month=previous, report=report, options=options, history=history,
                            filters=dict(local_authority=authority, service_type=service_type,
                                         regional_manager=manager), scoped=service_ids is not None or region is not None)
+
+
+@bp.route("/data-quality")
+def data_quality():
+    """Informational validation dashboard, scoped to the current user's services."""
+    months = available_months()
+    selected = resolve_month(request.args.get("month"))
+    if selected not in months:
+        selected = months[0] if months else None
+    service_ids = None
+    region = None
+    if _is_registered_manager_user():
+        service_ids = [current_user.service_id]
+    elif _is_regional_manager_user():
+        region = current_user.regional_manager
+    scoped = service_ids is not None or region is not None
+    authority = (request.args.get("local_authority") or "").strip() if not scoped else None
+    service_type = (request.args.get("service_type") or "").strip() if not scoped else None
+    manager = (request.args.get("regional_manager") or "").strip() if not scoped else region
+    raw_min = request.args.get("nps_min", "5")
+    try:
+        nps_min = max(1, min(int(raw_min), 100))
+    except (TypeError, ValueError):
+        nps_min = 5
+    report = quality_report(selected, service_ids=service_ids, regional_manager=manager,
+                            local_authority=authority, service_type=service_type,
+                            nps_min_responses=nps_min)
+    return render_template("data_quality.html", report=report, months=months,
+                           selected_month=selected, scoped=scoped,
+                           options=filter_options(regional_manager=manager),
+                           filters=dict(regional_manager=manager, local_authority=authority,
+                                        service_type=service_type))
 
 
 @bp.route("/setup", methods=["GET", "POST"])

@@ -288,3 +288,92 @@ def test_performance_trends_restricts_registered_manager_and_region(client, app)
         assert hidden not in response.data
         t = token(client, '/performance-trends')
         client.post('/logout', data={'csrf_token': t})
+
+
+def test_data_quality_missing_zero_and_not_applicable(client, app):
+    from datetime import date
+    from app.models import Service, KPIDefinition
+    from app.services.data_quality import classify_result, quality_report
+    provision_admin(client)
+    with app.app_context():
+        service = Service(code='DQ_A', name='Quality Check House', active=True)
+        db.session.add(service); db.session.flush()
+        metrics = [KPIDefinition(code=f'DQ_{i}', name=f'Quality indicator {i}', domain='Quality', active=True)
+                   for i in range(4)]
+        db.session.add_all(metrics); db.session.flush()
+        db.session.add_all([
+            KPIResult(reporting_month=date(2026, 10, 1), scope='service', service_id=service.id,
+                      kpi_id=metrics[0].id, value_numeric=0, rag='Green'),
+            KPIResult(reporting_month=date(2026, 10, 1), scope='service', service_id=service.id,
+                      kpi_id=metrics[1].id, value_text='N/A', rag='Unscored'),
+            KPIResult(reporting_month=date(2026, 10, 1), scope='service', service_id=service.id,
+                      kpi_id=metrics[2].id, rag='Unscored'),
+        ])
+        db.session.commit()
+        report = quality_report(date(2026, 10, 1))
+        assert report['totals'] == dict(expected=4, present=1, missing=1, blank=1, na=1, zero=1)
+        assert classify_result(None) == 'Missing'
+        assert classify_result(KPIResult(value_numeric=0)) == 'Zero'
+    response = client.get('/data-quality?month=2026-10')
+    assert response.status_code == 200
+    assert b'Quality Check House' in response.data
+
+
+def test_data_quality_flags_and_preserves_values(client, app):
+    from datetime import date
+    from app.models import Service, SLSubService, KPIDefinition, SLSubServiceKPIResult
+    from app.services.data_quality import quality_report
+    provision_admin(client)
+    with app.app_context():
+        parent = Service(code='DQ_PARENT', name='Quality SL Parent', service_type='Supported Living', active=True)
+        db.session.add(parent); db.session.flush()
+        child_a = SLSubService(parent_service_id=parent.id, name='DQ Child A', active=True)
+        child_b = SLSubService(parent_service_id=parent.id, name='DQ Child B', active=True)
+        vacancy = KPIDefinition(code='VACANCY_PCT', name='Vacancy rate', domain='People', active=True)
+        nps = KPIDefinition(code='NPS_SCORE', name='NPS score', domain='People', active=True)
+        db.session.add_all([child_a, child_b, vacancy, nps]); db.session.flush()
+        db.session.add_all([
+            KPIResult(reporting_month=date(2026, 10, 1), scope='service', service_id=parent.id,
+                      kpi_id=vacancy.id, value_numeric=-5, rag='Green', source='SL aggregate'),
+            KPIResult(reporting_month=date(2026, 10, 1), scope='service', service_id=parent.id,
+                      kpi_id=nps.id, value_numeric=100, rag='Green', source='NPS'),
+            SLSubServiceKPIResult(reporting_month=date(2026, 10, 1), sub_service_id=child_a.id,
+                                 kpi_id=vacancy.id, value_numeric=-5, rag='Green'),
+        ])
+        db.session.commit()
+        report = quality_report(date(2026, 10, 1))
+        kinds = {flag['kind'] for flag in report['flags']}
+        assert {'Negative vacancy', 'Low NPS sample', 'SL roll-up coverage'} <= kinds
+        assert KPIResult.query.filter_by(service_id=parent.id, kpi_id=vacancy.id).one().value_numeric == -5
+        assert len(report['child_rows']) == 2
+
+
+def test_data_quality_registered_and_regional_manager_scope(client, app):
+    from datetime import date
+    from app.models import Service, KPIDefinition, User
+    provision_admin(client)
+    with app.app_context():
+        a = Service(code='DQ_SCOPE_A', name='Quality Scoped A', regional_manager='Region A', active=True)
+        b = Service(code='DQ_SCOPE_B', name='Quality Scoped B', regional_manager='Region B', active=True)
+        kpi = KPIDefinition(code='DQ_SCOPE_KPI', name='Quality Scope KPI', domain='Quality', active=True)
+        db.session.add_all([a, b, kpi]); db.session.flush()
+        for svc in (a, b):
+            db.session.add(KPIResult(reporting_month=date(2026, 10, 1), scope='service',
+                                    service_id=svc.id, kpi_id=kpi.id, value_numeric=0, rag='Green'))
+        manager = User(username='dq-site-manager', role='Registered Manager', active=True, service_id=a.id)
+        manager.set_password('very-long-test-passphrase')
+        regional = User(username='dq-region-manager', role='Regional Manager', active=True, regional_manager='Region B')
+        regional.set_password('very-long-test-passphrase')
+        db.session.add_all([manager, regional]); db.session.commit()
+    t = token(client, '/'); client.post('/logout', data={'csrf_token': t})
+    for username, visible, hidden in [('dq-site-manager', b'Quality Scoped A', b'Quality Scoped B'),
+                                       ('dq-region-manager', b'Quality Scoped B', b'Quality Scoped A')]:
+        t = token(client, '/login')
+        client.post('/login', data={'csrf_token': t, 'identity': username,
+                                    'password': 'very-long-test-passphrase'})
+        response = client.get('/data-quality?month=2026-10&regional_manager=Region%20A')
+        assert response.status_code == 200
+        assert visible in response.data
+        assert hidden not in response.data
+        t = token(client, '/data-quality')
+        client.post('/logout', data={'csrf_token': t})
